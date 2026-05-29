@@ -127,7 +127,7 @@ export class SettingsScene extends Phaser.Scene {
       .text(
         centerX,
         startY + audioSeparatorIdx * rowH + padHeaderOffset + sectionHeaderInset,
-        '音效',
+        '音訊',
         {
           fontFamily: '"Noto Sans TC", "Inter", system-ui, sans-serif',
           fontSize: '28px',
@@ -207,7 +207,7 @@ export class SettingsScene extends Phaser.Scene {
   private labelText(row: Row): string {
     if (row.kind === 'keyboard') return KEYBOARD_ACTION_LABELS[row.action];
     if (row.kind === 'gamepad') return GAMEPAD_ACTION_LABELS[row.action];
-    if (row.kind === 'audio') return '音量';
+    if (row.kind === 'audio') return '音效音量';
     return '';
   }
 
