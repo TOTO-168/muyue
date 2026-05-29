@@ -12,12 +12,13 @@ const HIT_IMMUNE_MS = 220;
 const STUN_MS = 200;
 const MAX_HP = 4;
 
-const ATTACK_RANGE = 140;
-const ATTACK_TELEGRAPH_MS = 220;
+const ATTACK_RANGE = 520;
+const ATTACK_TELEGRAPH_MS = 320;
 const ATTACK_ACTIVE_MS = 180;
-const ATTACK_COOLDOWN_MS = 1000;
-const ATTACK_REACH = 96;
-const ATTACK_HEIGHT = 80;
+const ATTACK_COOLDOWN_MS = 1100;
+const PROJECTILE_SPEED = 540;
+const PROJECTILE_LIFE_MS = 1500;
+const PROJECTILE_RADIUS = 16;
 
 type AggroState = 'patrol' | 'chase' | 'return';
 
@@ -39,13 +40,18 @@ export class Enemy {
   private stunUntil = 0;
   private state: AggroState = 'patrol';
 
-  private attackHitbox?: Phaser.GameObjects.Rectangle;
-  private telegraph?: Phaser.GameObjects.Sprite;
-  private attackFlash?: Phaser.GameObjects.Sprite;
+  private telegraph?: Phaser.GameObjects.Arc;
+  private attackFlash?: Phaser.GameObjects.Arc;
   private attackActive = false;
   private attackActiveUntil = 0;
   private attackReadyAt = 0;
   private attackWindupUntil = 0;
+  private projectiles: Array<{
+    obj: Phaser.GameObjects.Arc;
+    halo: Phaser.GameObjects.Arc;
+    vx: number;
+    expireAt: number;
+  }> = [];
   private hpBg: Phaser.GameObjects.Rectangle;
   private hpFill: Phaser.GameObjects.Rectangle;
   private hpVisibleUntil = 0;
@@ -86,26 +92,20 @@ export class Enemy {
     this.minX = x - range;
     this.maxX = x + range;
     if (canAttack) {
-      this.attackHitbox = scene.add
-        .rectangle(0, 0, ATTACK_REACH, ATTACK_HEIGHT, 0xffffff, 0)
-        .setVisible(false);
       this.telegraph = scene.add
-        .sprite(0, 0, ART_TEX.slash)
-        .setTint(0xff7aa0)
-        .setAlpha(0)
+        .circle(0, 0, 18, 0xc4b0ff, 0)
+        .setStrokeStyle(2, 0xf0d6ff, 0)
         .setDepth(29)
         .setVisible(false);
       this.attackFlash = scene.add
-        .sprite(0, 0, ART_TEX.slash)
-        .setTint(0xffb0d0)
+        .circle(0, 0, 28, 0xf0d6ff, 0)
         .setDepth(46)
-        .setVisible(false)
-        .setAlpha(0);
+        .setVisible(false);
     }
   }
 
   getAttackHitbox(): Phaser.GameObjects.Rectangle | undefined {
-    return this.attackActive ? this.attackHitbox : undefined;
+    return undefined;
   }
 
   takeHit(t: number, knockX: number): boolean {
@@ -120,7 +120,6 @@ export class Enemy {
     if (this.attackActive || this.attackWindupUntil > 0) {
       this.attackActive = false;
       this.attackWindupUntil = 0;
-      this.attackHitbox?.setVisible(false);
       if (this.telegraph) {
         this.scene.tweens.killTweensOf(this.telegraph);
         this.telegraph.setVisible(false);
@@ -140,9 +139,6 @@ export class Enemy {
     this.body.setVelocity(0, 0);
     this.body.setAllowGravity(false);
     this.attackActive = false;
-    this.attackHitbox?.setVisible(false);
-    this.attackHitbox?.destroy();
-    this.attackHitbox = undefined;
     if (this.telegraph) {
       this.scene.tweens.killTweensOf(this.telegraph);
       this.telegraph.destroy();
@@ -153,6 +149,13 @@ export class Enemy {
       this.attackFlash.destroy();
       this.attackFlash = undefined;
     }
+    for (const p of this.projectiles) {
+      this.scene.tweens.killTweensOf(p.obj);
+      this.scene.tweens.killTweensOf(p.halo);
+      p.obj.destroy();
+      p.halo.destroy();
+    }
+    this.projectiles = [];
     this.hpBg.setVisible(false);
     this.hpFill.setVisible(false);
     this.scene.events.emit(EV.enemyDied);
@@ -173,16 +176,13 @@ export class Enemy {
     });
   }
 
-  update(t: number, _dt: number, playerX: number, playerY: number) {
+  update(t: number, dt: number, playerX: number, playerY: number) {
+    this.updateProjectiles(t, dt);
     if (this.isDead) return;
     this.updateVisual(t);
     this.updateHealthBar(t);
-    if (this.attackActive) {
-      this.positionAttackHitbox();
-      if (t >= this.attackActiveUntil) {
-        this.attackActive = false;
-        this.attackHitbox?.setVisible(false);
-      }
+    if (this.attackActive && t >= this.attackActiveUntil) {
+      this.attackActive = false;
     }
     if (t < this.stunUntil) return;
     if (!this.body.blocked.down) return;
@@ -244,70 +244,136 @@ export class Enemy {
       this.attackActive = true;
       this.attackActiveUntil = t + ATTACK_ACTIVE_MS;
       this.attackReadyAt = t + ATTACK_ACTIVE_MS + ATTACK_COOLDOWN_MS;
-      if (this.attackHitbox) {
-        this.attackHitbox.setVisible(true);
-        this.positionAttackHitbox();
-      }
       this.playAttackFlash();
+      this.spawnProjectile(t);
     }
 
-    if (this.attackActive) {
-      this.positionAttackHitbox();
-      if (t >= this.attackActiveUntil) {
-        this.attackActive = false;
-        this.attackHitbox?.setVisible(false);
-      }
+    if (this.attackActive && t >= this.attackActiveUntil) {
+      this.attackActive = false;
     }
   }
 
   private startTelegraph() {
     if (!this.telegraph) return;
-    const reach = WIDTH / 2 + ATTACK_REACH / 2;
-    this.telegraph.setPosition(this.obj.x + this.dir * reach, this.obj.y);
-    this.telegraph.setFlipX(this.dir < 0);
-    this.telegraph.setAngle(this.dir < 0 ? -10 : 10);
-    this.telegraph.setScale(0.6, 0.55);
+    const reach = WIDTH / 2 + 14;
+    this.telegraph.setPosition(this.obj.x + this.dir * reach, this.obj.y - 4);
     this.telegraph.setVisible(true);
+    this.telegraph.setScale(0.4);
+    this.telegraph.fillAlpha = 0;
+    this.telegraph.setStrokeStyle(2, 0xf0d6ff, 0);
     this.scene.tweens.killTweensOf(this.telegraph);
     this.scene.tweens.add({
       targets: this.telegraph,
-      alpha: { from: 0, to: 0.42 },
-      scaleX: 0.9,
-      scaleY: 0.7,
+      fillAlpha: 0.55,
+      scaleX: 1.1,
+      scaleY: 1.1,
       duration: ATTACK_TELEGRAPH_MS,
       ease: 'Sine.Out',
+      onUpdate: (tw) => {
+        const v = (tw.progress * 0.85);
+        this.telegraph?.setStrokeStyle(2, 0xf0d6ff, v);
+      },
       onComplete: () => {
         this.telegraph?.setVisible(false);
-        if (this.telegraph) this.telegraph.alpha = 0;
+        if (this.telegraph) this.telegraph.fillAlpha = 0;
       },
     });
   }
 
   private playAttackFlash() {
     if (!this.attackFlash) return;
-    const reach = WIDTH / 2 + ATTACK_REACH / 2;
-    this.attackFlash.setPosition(this.obj.x + this.dir * reach, this.obj.y);
-    this.attackFlash.setFlipX(this.dir < 0);
-    this.attackFlash.setAngle(this.dir < 0 ? -18 : 18);
-    this.attackFlash.setScale(0.95, 0.85);
-    this.attackFlash.setAlpha(0.95);
+    const reach = WIDTH / 2 + 14;
+    this.attackFlash.setPosition(this.obj.x + this.dir * reach, this.obj.y - 4);
+    this.attackFlash.setScale(0.5);
+    this.attackFlash.fillAlpha = 0.9;
     this.attackFlash.setVisible(true);
     this.scene.tweens.killTweensOf(this.attackFlash);
     this.scene.tweens.add({
       targets: this.attackFlash,
-      alpha: 0,
-      scaleX: 1.25,
-      scaleY: 1.0,
-      duration: 220,
+      fillAlpha: 0,
+      scaleX: 1.8,
+      scaleY: 1.8,
+      duration: 280,
       ease: 'Cubic.Out',
       onComplete: () => this.attackFlash?.setVisible(false),
     });
   }
 
-  private positionAttackHitbox() {
-    if (!this.attackHitbox) return;
-    const x = this.obj.x + this.dir * (WIDTH / 2 + ATTACK_REACH / 2);
-    this.attackHitbox.setPosition(x, this.obj.y);
+  private spawnProjectile(t: number) {
+    const reach = WIDTH / 2 + 18;
+    const x = this.obj.x + this.dir * reach;
+    const y = this.obj.y - 4;
+    const halo = this.scene.add
+      .circle(x, y, PROJECTILE_RADIUS + 8, 0xc4b0ff, 0.28)
+      .setDepth(44);
+    const core = this.scene.add
+      .circle(x, y, PROJECTILE_RADIUS, 0xf0d6ff, 0.96)
+      .setStrokeStyle(3, 0xb39bff, 0.7)
+      .setDepth(45);
+    this.scene.tweens.add({
+      targets: [core, halo],
+      scaleX: 1.18,
+      scaleY: 1.18,
+      duration: 260,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.InOut',
+    });
+    this.projectiles.push({
+      obj: core,
+      halo,
+      vx: PROJECTILE_SPEED * this.dir,
+      expireAt: t + PROJECTILE_LIFE_MS,
+    });
+  }
+
+  private updateProjectiles(t: number, dt: number) {
+    for (let i = this.projectiles.length - 1; i >= 0; i--) {
+      const p = this.projectiles[i];
+      const step = (dt / 1000) * p.vx;
+      p.obj.x += step;
+      p.halo.x = p.obj.x;
+      p.halo.y = p.obj.y;
+      if (t >= p.expireAt) {
+        this.scene.tweens.killTweensOf(p.obj);
+        this.scene.tweens.killTweensOf(p.halo);
+        this.scene.tweens.add({
+          targets: [p.obj, p.halo],
+          alpha: 0,
+          scaleX: 1.6,
+          scaleY: 1.6,
+          duration: 200,
+          onComplete: () => {
+            p.obj.destroy();
+            p.halo.destroy();
+          },
+        });
+        this.projectiles.splice(i, 1);
+      }
+    }
+  }
+
+  getProjectiles() {
+    return this.projectiles;
+  }
+
+  consumeProjectile(p: { obj: Phaser.GameObjects.Arc; halo: Phaser.GameObjects.Arc }) {
+    const idx = this.projectiles.findIndex((q) => q === p);
+    if (idx < 0) return;
+    this.scene.tweens.killTweensOf(p.obj);
+    this.scene.tweens.killTweensOf(p.halo);
+    this.scene.tweens.add({
+      targets: [p.obj, p.halo],
+      alpha: 0,
+      scaleX: 2.2,
+      scaleY: 2.2,
+      duration: 180,
+      onComplete: () => {
+        p.obj.destroy();
+        p.halo.destroy();
+      },
+    });
+    this.projectiles.splice(idx, 1);
   }
 
   private updateHealthBar(t: number) {

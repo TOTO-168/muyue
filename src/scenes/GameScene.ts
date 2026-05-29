@@ -1738,6 +1738,21 @@ export class GameScene extends Phaser.Scene {
       ) {
         this.player.takeHit(t, e.obj.x);
       }
+      const projectiles = e.getProjectiles();
+      for (let i = projectiles.length - 1; i >= 0; i--) {
+        const p = projectiles[i];
+        const r = p.obj.radius;
+        const pBounds = new Phaser.Geom.Rectangle(
+          p.obj.x - r,
+          p.obj.y - r,
+          r * 2,
+          r * 2,
+        );
+        if (Phaser.Geom.Intersects.RectangleToRectangle(playerBounds, pBounds)) {
+          this.player.takeHit(t, p.obj.x);
+          e.consumeProjectile(p);
+        }
+      }
     }
   }
 
