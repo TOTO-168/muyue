@@ -54,6 +54,12 @@ class Sfx {
     setTimeout(() => this.play({ freq: 1320, dur: 0.22, type: 'sine', vol: 0.05, slide: 180 }), 80);
   }
   bossTelegraph() { this.play({ freq: 90, dur: 0.36, type: 'sawtooth', vol: 0.07, slide: 60 }); }
+  bossRoar() {
+    this.play({ freq: 70, dur: 1.4, type: 'sawtooth', vol: 0.14, slide: -28 });
+    setTimeout(() => this.play({ freq: 130, dur: 1.1, type: 'square', vol: 0.08, slide: -60 }), 40);
+    setTimeout(() => this.play({ freq: 38, dur: 1.6, type: 'sine', vol: 0.09, slide: -10 }), 80);
+    setTimeout(() => this.play({ freq: 220, dur: 0.55, type: 'sawtooth', vol: 0.05, slide: -120 }), 180);
+  }
   bossSlam() {
     this.play({ freq: 70, dur: 0.4, type: 'sawtooth', vol: 0.1, slide: -40 });
     setTimeout(() => this.play({ freq: 180, dur: 0.18, type: 'square', vol: 0.06, slide: -120 }), 30);

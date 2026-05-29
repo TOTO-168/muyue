@@ -818,6 +818,7 @@ export class GameScene extends Phaser.Scene {
       const HOVER_MS = 3000;
       this.time.delayedCall(900, () => {
         if (!this.boss || this.bossEntranceState !== 'hovering') return;
+        sfx.bossRoar();
         cam.shake(HOVER_MS, 0.009);
         this.spawnBossAura(bx, skyY);
         this.tweens.add({
