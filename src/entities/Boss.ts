@@ -62,6 +62,8 @@ export class Boss {
   private telegraph: Phaser.GameObjects.Sprite;
   private attackFlash: Phaser.GameObjects.Sprite;
   private shockwaveGfx?: Phaser.GameObjects.Graphics;
+  private entranceShockwaveHitbox?: Phaser.GameObjects.Rectangle;
+  private entranceShockwaveUntil = 0;
 
   private shadow: Phaser.GameObjects.Ellipse;
 
@@ -144,6 +146,11 @@ export class Boss {
       this.shockwaveGfx.destroy();
       this.shockwaveGfx = undefined;
     }
+    if (this.entranceShockwaveHitbox) {
+      this.entranceShockwaveHitbox.destroy();
+      this.entranceShockwaveHitbox = undefined;
+    }
+    this.entranceShockwaveUntil = 0;
     this.scene.events.emit(EV.bossDied);
     this.scene.tweens.add({
       targets: [this.visual, this.shadow],
@@ -351,6 +358,53 @@ export class Boss {
 
   triggerLandingShockwave() {
     this.spawnShockwave();
+  }
+
+  triggerEntranceShockwave(worldW: number, groundY: number) {
+    const t = this.scene.time.now;
+    const damageH = 90;
+    const damageY = groundY - damageH / 2;
+    if (!this.entranceShockwaveHitbox) {
+      this.entranceShockwaveHitbox = this.scene.add
+        .rectangle(worldW / 2, damageY, worldW, damageH, 0xffffff, 0)
+        .setVisible(false);
+    } else {
+      this.entranceShockwaveHitbox.setPosition(worldW / 2, damageY);
+      this.entranceShockwaveHitbox.setSize(worldW, damageH);
+    }
+    this.entranceShockwaveUntil = t + 340;
+    this.spawnShockwave();
+    this.spawnGroundWave(this.obj.x, groundY, -1, worldW);
+    this.spawnGroundWave(this.obj.x, groundY, 1, worldW);
+  }
+
+  private spawnGroundWave(cx: number, groundY: number, dir: 1 | -1, worldW: number) {
+    const baseY = groundY - 22;
+    const wave = this.scene.add.graphics().setDepth(46).setPosition(cx, baseY);
+    wave.fillStyle(0xfff0b0, 0.55);
+    wave.fillEllipse(0, 0, 90, 38);
+    wave.lineStyle(4, 0xffd977, 0.85);
+    wave.strokeEllipse(0, 0, 90, 38);
+    wave.lineStyle(2, 0xffffff, 0.6);
+    wave.strokeEllipse(0, 0, 54, 22);
+    const target = cx + dir * worldW;
+    this.scene.tweens.add({
+      targets: wave,
+      x: target,
+      scaleX: 2.0,
+      scaleY: 0.55,
+      alpha: 0,
+      duration: 560,
+      ease: 'Cubic.Out',
+      onComplete: () => wave.destroy(),
+    });
+  }
+
+  getEntranceShockwaveHitbox(): Phaser.GameObjects.Rectangle | undefined {
+    if (this.scene.time.now < this.entranceShockwaveUntil) {
+      return this.entranceShockwaveHitbox;
+    }
+    return undefined;
   }
 
   private spawnShockwave() {

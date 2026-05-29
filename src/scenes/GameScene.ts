@@ -63,6 +63,7 @@ export class GameScene extends Phaser.Scene {
   private bossEntrancePending = false;
   private bossEntranceState: 'idle' | 'hovering' | 'falling' | 'done' = 'idle';
   private bossLandingWatcher?: Phaser.Time.TimerEvent;
+  private bossPlatformCollider?: Phaser.Physics.Arcade.Collider;
 
   private hitStopActive = false;
 
@@ -129,6 +130,7 @@ export class GameScene extends Phaser.Scene {
     this.bossEntranceState = 'idle';
     this.bossLandingWatcher?.remove(false);
     this.bossLandingWatcher = undefined;
+    this.bossPlatformCollider = undefined;
     this.bossDoorLocked = false;
     this.bossDoorBumpAt = 0;
     this.leftDoorArrow = undefined;
@@ -790,7 +792,7 @@ export class GameScene extends Phaser.Scene {
 
       const boss = new Boss(this, bx, skyY);
       this.boss = boss;
-      this.physics.add.collider(boss.obj, this.platforms);
+      this.bossPlatformCollider = this.physics.add.collider(boss.obj, this.platforms);
       boss.body.setAllowGravity(false);
       boss.body.setVelocity(0, 0);
       boss.visual.setAlpha(0);
@@ -933,6 +935,7 @@ export class GameScene extends Phaser.Scene {
     this.tweens.killTweensOf(this.boss.visual);
     this.boss.visual.setScale(1, 1);
     this.boss.visual.setPosition(this.boss.obj.x, this.boss.obj.y - 8);
+    if (this.bossPlatformCollider) this.bossPlatformCollider.active = false;
     this.boss.body.setAllowGravity(true);
     this.boss.body.setVelocityY(200);
     this.bossLandingWatcher?.remove(false);
@@ -966,9 +969,10 @@ export class GameScene extends Phaser.Scene {
       this.cameras.main.startFollow(this.player.obj, true, 0.12, 0.12);
       return;
     }
+    if (this.bossPlatformCollider) this.bossPlatformCollider.active = true;
     const cam = this.cameras.main;
     cam.shake(320, 0.026);
-    this.boss.triggerLandingShockwave();
+    this.boss.triggerEntranceShockwave(this.worldW, this.getGroundTop());
     this.tweens.add({
       targets: this.boss.visual,
       scaleX: 1.25,
@@ -1631,6 +1635,17 @@ export class GameScene extends Phaser.Scene {
           )
         ) {
           this.player.takeHit(t, boss.obj.x);
+        } else {
+          const esw = boss.getEntranceShockwaveHitbox();
+          if (
+            esw &&
+            Phaser.Geom.Intersects.RectangleToRectangle(
+              playerBounds,
+              esw.getBounds(),
+            )
+          ) {
+            this.player.takeHit(t, boss.obj.x);
+          }
         }
       }
     }
