@@ -1448,14 +1448,6 @@ export class GameScene extends Phaser.Scene {
       'PAUSED',
       [
         { label: '繼續', onSelect: () => this.closePauseMenu() },
-        {
-          label: '重新開始本關',
-          onSelect: () => {
-            this.destroyMenu();
-            this.menuState = 'none';
-            this.startTransition({ stage: this.stageIndex, duration: 300 });
-          },
-        },
         { label: '設定', onSelect: () => this.openSettingsOverlay() },
         { label: '回主選單', onSelect: () => this.quitToTitle() },
       ],
@@ -1507,8 +1499,16 @@ export class GameScene extends Phaser.Scene {
   }
 
   private openSettingsOverlay() {
+    const wasPaused = this.menuState === 'pause';
+    if (wasPaused) {
+      this.destroyMenu();
+      this.menuState = 'none';
+    }
     this.scene.launch('SettingsScene', { fromGame: true });
     this.scene.pause();
+    this.events.once(Phaser.Scenes.Events.RESUME, () => {
+      if (wasPaused) this.openPauseMenu();
+    });
   }
 
   update(t: number, dt: number) {
