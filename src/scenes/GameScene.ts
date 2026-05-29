@@ -40,8 +40,7 @@ export class GameScene extends Phaser.Scene {
   private menuTexts: Phaser.GameObjects.Text[] = [];
   private menuObjects: Phaser.GameObjects.GameObject[] = [];
   private menuCursor = 0;
-  private menuCamera?: Phaser.Cameras.Scene2D.Camera;
-  private menuBlurFx?: Phaser.FX.Blur;
+  private menuBlurTextureKey?: string;
 
   private stageIndex = 0;
   private stage!: StageConfig;
@@ -118,8 +117,6 @@ export class GameScene extends Phaser.Scene {
     this.menuTexts = [];
     this.menuObjects = [];
     this.menuCursor = 0;
-    this.menuCamera = undefined;
-    this.menuBlurFx = undefined;
     this.transitioning = false;
     this.bossHpBg = undefined;
     this.bossHpFill = undefined;
@@ -1334,7 +1331,7 @@ export class GameScene extends Phaser.Scene {
       .rectangle(w / 2, h / 2, w, h, 0x05060c, 0)
       .setScrollFactor(0)
       .setDepth(199);
-    this.tweens.add({ targets: bg, alpha: 0.55, duration: 220 });
+    this.tweens.add({ targets: bg, alpha: 0.5, duration: 220 });
     const titleText = this.add
       .text(w / 2, h / 2 - 180, title, {
         fontFamily: '"Noto Serif TC", "Cinzel", Georgia, serif',
@@ -1376,34 +1373,7 @@ export class GameScene extends Phaser.Scene {
     });
     this.menuCursor = 0;
     this.refreshMenuCursor();
-    this.applyMenuVisuals();
     this.game.canvas.style.cursor = '';
-  }
-
-  private applyMenuVisuals() {
-    if (!this.menuBlurFx) {
-      this.menuBlurFx = this.cameras.main.postFX.addBlur(0, 2, 2, 1, 0xffffff, 6);
-    }
-    if (!this.menuCamera) {
-      this.menuCamera = this.cameras.add(0, 0, this.scale.width, this.scale.height);
-      this.menuCamera.setScroll(0, 0);
-    }
-    this.cameras.main.ignore(this.menuObjects);
-    const nonMenu = this.children.list.filter(
-      (o) => !this.menuObjects.includes(o),
-    );
-    this.menuCamera.ignore(nonMenu);
-  }
-
-  private removeMenuVisuals() {
-    if (this.menuBlurFx) {
-      this.cameras.main.postFX.remove(this.menuBlurFx);
-      this.menuBlurFx = undefined;
-    }
-    if (this.menuCamera) {
-      this.cameras.remove(this.menuCamera);
-      this.menuCamera = undefined;
-    }
   }
 
   private refreshMenuCursor() {
@@ -1432,27 +1402,63 @@ export class GameScene extends Phaser.Scene {
   }
 
   private destroyMenu() {
-    this.removeMenuVisuals();
     this.menuObjects.forEach((o) => o.destroy());
     this.menuObjects = [];
     this.menuTexts = [];
     this.menuItems = [];
     this.menuCursor = 0;
+    if (this.menuBlurTextureKey) {
+      if (this.textures.exists(this.menuBlurTextureKey)) {
+        this.textures.remove(this.menuBlurTextureKey);
+      }
+      this.menuBlurTextureKey = undefined;
+    }
+  }
+
+  private addMenuBlurBg(snap: HTMLImageElement | HTMLCanvasElement) {
+    if (this.menuState === 'none') return;
+    const w = snap instanceof HTMLImageElement ? snap.naturalWidth : snap.width;
+    const h = snap instanceof HTMLImageElement ? snap.naturalHeight : snap.height;
+    if (!w || !h) return;
+    const blurCanvas = document.createElement('canvas');
+    blurCanvas.width = w;
+    blurCanvas.height = h;
+    const ctx = blurCanvas.getContext('2d');
+    if (!ctx) return;
+    ctx.filter = 'blur(14px)';
+    ctx.drawImage(snap as CanvasImageSource, 0, 0);
+    const key = `menuBlur_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
+    if (this.textures.exists(key)) this.textures.remove(key);
+    this.textures.addCanvas(key, blurCanvas);
+    this.menuBlurTextureKey = key;
+    const img = this.add
+      .image(0, 0, key)
+      .setOrigin(0, 0)
+      .setDisplaySize(this.scale.width, this.scale.height)
+      .setScrollFactor(0)
+      .setDepth(198);
+    this.menuObjects.push(img);
   }
 
   private openPauseMenu() {
     if (this.menuState !== 'none') return;
     this.menuState = 'pause';
     this.physics.pause();
-    this.buildMenu(
-      'PAUSED',
-      [
-        { label: '繼續', onSelect: () => this.closePauseMenu() },
-        { label: '設定', onSelect: () => this.openSettingsOverlay() },
-        { label: '回主選單', onSelect: () => this.quitToTitle() },
-      ],
-      '#e8e8f0',
-    );
+    this.game.renderer.snapshot((snap) => {
+      if (this.menuState !== 'pause') return;
+      this.buildMenu(
+        'PAUSED',
+        [
+          { label: '繼續', onSelect: () => this.closePauseMenu() },
+          { label: '設定', onSelect: () => this.openSettingsOverlay() },
+          { label: '回主選單', onSelect: () => this.quitToTitle() },
+        ],
+        '#e8e8f0',
+      );
+      if (snap instanceof HTMLImageElement || snap instanceof HTMLCanvasElement) {
+        this.addMenuBlurBg(snap);
+      }
+    });
   }
 
   private closePauseMenu() {
@@ -1468,26 +1474,32 @@ export class GameScene extends Phaser.Scene {
     this.menuState = 'death';
     if (this.currentSlot >= 0) recordDeath(this.currentSlot);
     this.physics.pause();
-    this.buildMenu(
-      'YOU DIED',
-      [
-        {
-          label: '重試',
-          onSelect: () => {
-            this.destroyMenu();
-            this.menuState = 'none';
-            const save = this.currentSlot >= 0 ? loadSlot(this.currentSlot) : null;
-            if (save) {
-              this.startTransition({ stage: save.stage, from: 'save', duration: 120 });
-            } else {
-              this.startTransition({ stage: this.stageIndex, duration: 120 });
-            }
+    this.game.renderer.snapshot((snap) => {
+      if (this.menuState !== 'death') return;
+      this.buildMenu(
+        'YOU DIED',
+        [
+          {
+            label: '重試',
+            onSelect: () => {
+              this.destroyMenu();
+              this.menuState = 'none';
+              const save = this.currentSlot >= 0 ? loadSlot(this.currentSlot) : null;
+              if (save) {
+                this.startTransition({ stage: save.stage, from: 'save', duration: 120 });
+              } else {
+                this.startTransition({ stage: this.stageIndex, duration: 120 });
+              }
+            },
           },
-        },
-        { label: '回主選單', onSelect: () => this.quitToTitle() },
-      ],
-      '#ff5577',
-    );
+          { label: '回主選單', onSelect: () => this.quitToTitle() },
+        ],
+        '#ff5577',
+      );
+      if (snap instanceof HTMLImageElement || snap instanceof HTMLCanvasElement) {
+        this.addMenuBlurBg(snap);
+      }
+    });
   }
 
   private quitToTitle() {
@@ -1499,16 +1511,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private openSettingsOverlay() {
-    const wasPaused = this.menuState === 'pause';
-    if (wasPaused) {
-      this.destroyMenu();
-      this.menuState = 'none';
-    }
     this.scene.launch('SettingsScene', { fromGame: true });
     this.scene.pause();
-    this.events.once(Phaser.Scenes.Events.RESUME, () => {
-      if (wasPaused) this.openPauseMenu();
-    });
   }
 
   update(t: number, dt: number) {
