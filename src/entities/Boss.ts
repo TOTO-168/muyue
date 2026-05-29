@@ -362,7 +362,7 @@ export class Boss {
 
   triggerEntranceShockwave(worldW: number, groundY: number) {
     const t = this.scene.time.now;
-    const damageH = 90;
+    const damageH = 36;
     const damageY = groundY - damageH / 2;
     if (!this.entranceShockwaveHitbox) {
       this.entranceShockwaveHitbox = this.scene.add
