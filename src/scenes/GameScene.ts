@@ -37,10 +37,8 @@ export class GameScene extends Phaser.Scene {
   private menuConfirmKey2!: Phaser.Input.Keyboard.Key;
   private menuState: 'none' | 'pause' | 'death' = 'none';
   private menuItems: Array<{ label: string; onSelect: () => void }> = [];
-  private menuTexts: Phaser.GameObjects.Text[] = [];
-  private menuObjects: Phaser.GameObjects.GameObject[] = [];
   private menuCursor = 0;
-  private menuBlurTextureKey?: string;
+  private menuOverlayDom?: HTMLDivElement;
 
   private stageIndex = 0;
   private stage!: StageConfig;
@@ -114,9 +112,12 @@ export class GameScene extends Phaser.Scene {
     this.victoryShown = false;
     this.menuState = 'none';
     this.menuItems = [];
-    this.menuTexts = [];
-    this.menuObjects = [];
     this.menuCursor = 0;
+    if (this.menuOverlayDom) {
+      this.menuOverlayDom.remove();
+      this.menuOverlayDom = undefined;
+    }
+    this.removeMenuBlurBg();
     this.transitioning = false;
     this.bossHpBg = undefined;
     this.bossHpFill = undefined;
@@ -1325,65 +1326,89 @@ export class GameScene extends Phaser.Scene {
     titleColor: string,
   ) {
     this.destroyMenu();
-    const w = this.scale.width;
-    const h = this.scale.height;
-    const bg = this.add
-      .rectangle(w / 2, h / 2, w, h, 0x05060c, 0)
-      .setScrollFactor(0)
-      .setDepth(199);
-    this.tweens.add({ targets: bg, alpha: 0.5, duration: 220 });
-    const titleText = this.add
-      .text(w / 2, h / 2 - 180, title, {
-        fontFamily: '"Noto Serif TC", "Cinzel", Georgia, serif',
-        fontSize: '96px',
-        color: titleColor,
-      })
-      .setOrigin(0.5)
-      .setScrollFactor(0)
-      .setDepth(200)
-      .setAlpha(0)
-      .setShadow(0, 0, titleColor, 10, true, true);
-    this.tweens.add({ targets: titleText, alpha: 1, duration: 260 });
-    this.menuObjects.push(bg, titleText);
     this.menuItems = items;
-    this.menuTexts = items.map((item, i) => {
-      const t = this.add
-        .text(w / 2, h / 2 + i * 70, item.label, {
-          fontFamily: '"Noto Serif TC", "Cinzel", Georgia, serif',
-          fontSize: '40px',
-          color: '#e8e8f0',
-        })
-        .setOrigin(0.5)
-        .setScrollFactor(0)
-        .setDepth(200)
-        .setAlpha(0)
-        .setShadow(0, 0, '#000000', 8)
-        .setInteractive({ useHandCursor: true })
-        .on('pointerover', () => {
-          this.menuCursor = i;
-          this.refreshMenuCursor();
-        })
-        .on('pointerdown', () => {
-          this.menuCursor = i;
-          this.confirmMenu();
-        });
-      this.tweens.add({ targets: t, alpha: 1, duration: 260, delay: 60 + i * 40 });
-      this.menuObjects.push(t);
-      return t;
+
+    const overlay = document.createElement('div');
+    overlay.style.cssText = [
+      'position:fixed',
+      'inset:0',
+      'background:rgba(5, 6, 12, 0.5)',
+      'z-index:1000',
+      'display:flex',
+      'flex-direction:column',
+      'align-items:center',
+      'justify-content:center',
+      'font-family:"Noto Serif TC","Cinzel",Georgia,serif',
+      'color:#e8e8f0',
+      'user-select:none',
+      '-webkit-user-select:none',
+      'opacity:0',
+      'transition:opacity 220ms ease-out',
+      'cursor:default',
+    ].join(';');
+
+    const titleEl = document.createElement('div');
+    titleEl.textContent = title;
+    titleEl.style.cssText = [
+      `font-size:clamp(56px, 6vw, 96px)`,
+      `color:${titleColor}`,
+      `text-shadow:0 0 18px ${titleColor}aa`,
+      `margin-bottom:64px`,
+      `letter-spacing:0.08em`,
+      `font-weight:700`,
+    ].join(';');
+    overlay.appendChild(titleEl);
+
+    items.forEach((_, i) => {
+      const btn = document.createElement('button');
+      btn.textContent = items[i].label;
+      btn.dataset.idx = String(i);
+      btn.style.cssText = [
+        'background:none',
+        'border:none',
+        'font-family:inherit',
+        'font-weight:700',
+        'font-size:clamp(24px, 2.4vw, 40px)',
+        'color:#e8e8f0',
+        'cursor:pointer',
+        'padding:12px 32px',
+        'margin:4px 0',
+        'transition:color 160ms ease, transform 160ms ease, text-shadow 160ms ease',
+        'outline:none',
+      ].join(';');
+      btn.addEventListener('mouseenter', () => {
+        this.menuCursor = i;
+        this.refreshMenuCursor();
+      });
+      btn.addEventListener('click', () => {
+        this.menuCursor = i;
+        this.confirmMenu();
+      });
+      overlay.appendChild(btn);
     });
+
+    document.body.appendChild(overlay);
+    this.menuOverlayDom = overlay;
+    requestAnimationFrame(() => {
+      if (this.menuOverlayDom === overlay) overlay.style.opacity = '1';
+    });
+
     this.menuCursor = 0;
     this.refreshMenuCursor();
-    this.game.canvas.style.cursor = '';
   }
 
   private refreshMenuCursor() {
-    this.menuTexts.forEach((t, i) => {
+    if (!this.menuOverlayDom) return;
+    const buttons = this.menuOverlayDom.querySelectorAll<HTMLButtonElement>('button');
+    buttons.forEach((btn, i) => {
       if (i === this.menuCursor) {
-        t.setColor('#ffe680');
-        t.setScale(1.08);
+        btn.style.color = '#ffe680';
+        btn.style.transform = 'scale(1.08)';
+        btn.style.textShadow = '0 0 14px rgba(255, 230, 128, 0.55)';
       } else {
-        t.setColor('#e8e8f0');
-        t.setScale(1);
+        btn.style.color = '#e8e8f0';
+        btn.style.transform = 'scale(1)';
+        btn.style.textShadow = '0 0 8px rgba(0, 0, 0, 0.45)';
       }
     });
   }
@@ -1402,45 +1427,27 @@ export class GameScene extends Phaser.Scene {
   }
 
   private destroyMenu() {
-    this.menuObjects.forEach((o) => o.destroy());
-    this.menuObjects = [];
-    this.menuTexts = [];
+    this.removeMenuBlurBg();
+    if (this.menuOverlayDom) {
+      this.menuOverlayDom.remove();
+      this.menuOverlayDom = undefined;
+    }
     this.menuItems = [];
     this.menuCursor = 0;
-    if (this.menuBlurTextureKey) {
-      if (this.textures.exists(this.menuBlurTextureKey)) {
-        this.textures.remove(this.menuBlurTextureKey);
-      }
-      this.menuBlurTextureKey = undefined;
-    }
   }
 
   private addMenuBlurBg() {
     if (this.menuState === 'none') return;
-    const sourceCanvas = this.game.canvas;
-    if (!sourceCanvas || !sourceCanvas.width || !sourceCanvas.height) return;
-    const blurCanvas = document.createElement('canvas');
-    blurCanvas.width = sourceCanvas.width;
-    blurCanvas.height = sourceCanvas.height;
-    const ctx = blurCanvas.getContext('2d');
-    if (!ctx) return;
-    ctx.filter = 'blur(14px)';
-    try {
-      ctx.drawImage(sourceCanvas, 0, 0);
-    } catch {
-      return;
-    }
-    const key = `menuBlur_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
-    if (this.textures.exists(key)) this.textures.remove(key);
-    this.textures.addCanvas(key, blurCanvas);
-    this.menuBlurTextureKey = key;
-    const img = this.add
-      .image(0, 0, key)
-      .setOrigin(0, 0)
-      .setDisplaySize(this.scale.width, this.scale.height)
-      .setScrollFactor(0)
-      .setDepth(198);
-    this.menuObjects.push(img);
+    const canvas = this.game.canvas;
+    if (!canvas) return;
+    canvas.style.transition = 'filter 220ms ease-out';
+    canvas.style.filter = 'blur(10px)';
+  }
+
+  private removeMenuBlurBg() {
+    const canvas = this.game.canvas;
+    if (!canvas) return;
+    canvas.style.filter = '';
   }
 
   private openPauseMenu() {
@@ -1504,9 +1511,20 @@ export class GameScene extends Phaser.Scene {
   }
 
   private openSettingsOverlay() {
+    const wasPaused = this.menuState === 'pause';
+    if (wasPaused) {
+      if (this.menuOverlayDom) this.menuOverlayDom.style.display = 'none';
+      this.removeMenuBlurBg();
+    }
     this.scene.launch('SettingsScene', { fromGame: true });
     this.scene.bringToTop('SettingsScene');
     this.scene.pause();
+    this.events.once(Phaser.Scenes.Events.RESUME, () => {
+      if (this.menuState === 'pause') {
+        if (this.menuOverlayDom) this.menuOverlayDom.style.display = 'flex';
+        this.addMenuBlurBg();
+      }
+    });
   }
 
   update(t: number, dt: number) {
