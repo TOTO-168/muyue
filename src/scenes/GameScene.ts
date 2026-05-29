@@ -1417,7 +1417,6 @@ export class GameScene extends Phaser.Scene {
     if (this.menuState !== 'none') return;
     this.menuState = 'pause';
     this.physics.pause();
-    this.tweens.pauseAll();
     this.buildMenu(
       'PAUSED',
       [
@@ -1442,7 +1441,6 @@ export class GameScene extends Phaser.Scene {
     this.destroyMenu();
     this.menuState = 'none';
     if (!this.hitStopActive) this.physics.resume();
-    this.tweens.resumeAll();
     this.game.canvas.style.cursor = 'none';
   }
 
