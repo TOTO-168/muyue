@@ -241,16 +241,34 @@ function createHealGlow(scene: Phaser.Scene) {
 
 function createSlash(scene: Phaser.Scene) {
   const g = scene.add.graphics().setVisible(false);
-  g.fillStyle(ART_COLORS.gold, 0.16);
-  g.fillEllipse(64, 48, 112, 42);
-  g.lineStyle(8, 0xfff0b0, 0.9);
+  const W = 128;
+  const H = 96;
+  const cx = W * 0.16;
+  const cy = H / 2;
+  const radius = 80;
+  const deg = (d: number) => Phaser.Math.DegToRad(d);
+
+  g.fillStyle(ART_COLORS.gold, 0.18);
   g.beginPath();
-  g.moveTo(14, 66);
-  g.lineTo(44, 40);
-  g.lineTo(114, 26);
+  g.arc(cx, cy, radius + 14, deg(-56), deg(56), false);
+  g.arc(cx, cy, radius - 14, deg(56), deg(-56), true);
+  g.closePath();
+  g.fillPath();
+
+  g.lineStyle(18, 0xfff0b0, 0.92);
+  g.beginPath();
+  g.arc(cx, cy, radius, deg(-50), deg(50), false);
   g.strokePath();
-  g.lineStyle(3, 0xffffff, 0.85);
-  g.lineBetween(28, 57, 111, 31);
-  g.generateTexture(TEX.slash, 128, 96);
+
+  g.lineStyle(7, 0xffffff, 0.96);
+  g.beginPath();
+  g.arc(cx, cy, radius, deg(-42), deg(42), false);
+  g.strokePath();
+
+  g.fillStyle(0xffffff, 0.9);
+  g.fillCircle(cx + Math.cos(deg(-50)) * radius, cy + Math.sin(deg(-50)) * radius, 3);
+  g.fillCircle(cx + Math.cos(deg(50)) * radius, cy + Math.sin(deg(50)) * radius, 3);
+
+  g.generateTexture(TEX.slash, W, H);
   g.destroy();
 }
