@@ -938,6 +938,17 @@ export class GameScene extends Phaser.Scene {
     if (this.bossPlatformCollider) this.bossPlatformCollider.active = false;
     this.boss.body.setAllowGravity(true);
     this.boss.body.setVelocityY(200);
+    this.player.body.setAllowGravity(true);
+    this.transitioning = false;
+    const cam = this.cameras.main;
+    cam.pan(this.player.obj.x, this.player.obj.y, 420, 'Sine.easeInOut');
+    cam.zoomTo(1.0, 420, 'Sine.easeInOut');
+    this.time.delayedCall(440, () => {
+      if (this.bossEntranceState === 'falling' || this.bossEntranceState === 'done') {
+        cam.startFollow(this.player.obj, true, 0.12, 0.12);
+        cam.setDeadzone(280, 180);
+      }
+    });
     this.bossLandingWatcher?.remove(false);
     this.bossLandingWatcher = this.time.addEvent({
       delay: 30,
@@ -981,15 +992,7 @@ export class GameScene extends Phaser.Scene {
       yoyo: true,
       ease: 'Cubic.Out',
     });
-    cam.pan(this.player.obj.x, this.player.obj.y, 600, 'Sine.easeInOut');
-    cam.zoomTo(1.0, 600, 'Sine.easeInOut');
-    this.time.delayedCall(640, () => {
-      cam.startFollow(this.player.obj, true, 0.12, 0.12);
-      cam.setDeadzone(280, 180);
-      this.player.body.setAllowGravity(true);
-      this.transitioning = false;
-      this.revealBossHud();
-    });
+    this.revealBossHud();
   }
 
   private updateBossHud() {
@@ -1533,12 +1536,9 @@ export class GameScene extends Phaser.Scene {
 
   update(t: number, dt: number) {
     this.samplePad();
-    if (this.bossEntranceState === 'falling') {
-      if (this.boss) {
-        this.boss.visual.setPosition(this.boss.obj.x, this.boss.obj.y - 8);
-        this.boss.visual.setRotation(0);
-      }
-      return;
+    if (this.bossEntranceState === 'falling' && this.boss) {
+      this.boss.visual.setPosition(this.boss.obj.x, this.boss.obj.y - 8);
+      this.boss.visual.setRotation(0);
     }
     if (this.bossEntranceState === 'hovering') return;
     if (this.transitioning) return;
