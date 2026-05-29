@@ -25,6 +25,10 @@ const config: Phaser.Types.Core.GameConfig = {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
   },
+  render: {
+    antialias: true,
+    preserveDrawingBuffer: true,
+  },
   input: {
     gamepad: true,
   },

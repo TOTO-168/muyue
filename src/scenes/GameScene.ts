@@ -1415,18 +1415,21 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private addMenuBlurBg(snap: HTMLImageElement | HTMLCanvasElement) {
+  private addMenuBlurBg() {
     if (this.menuState === 'none') return;
-    const w = snap instanceof HTMLImageElement ? snap.naturalWidth : snap.width;
-    const h = snap instanceof HTMLImageElement ? snap.naturalHeight : snap.height;
-    if (!w || !h) return;
+    const sourceCanvas = this.game.canvas;
+    if (!sourceCanvas || !sourceCanvas.width || !sourceCanvas.height) return;
     const blurCanvas = document.createElement('canvas');
-    blurCanvas.width = w;
-    blurCanvas.height = h;
+    blurCanvas.width = sourceCanvas.width;
+    blurCanvas.height = sourceCanvas.height;
     const ctx = blurCanvas.getContext('2d');
     if (!ctx) return;
     ctx.filter = 'blur(14px)';
-    ctx.drawImage(snap as CanvasImageSource, 0, 0);
+    try {
+      ctx.drawImage(sourceCanvas, 0, 0);
+    } catch {
+      return;
+    }
     const key = `menuBlur_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
     if (this.textures.exists(key)) this.textures.remove(key);
     this.textures.addCanvas(key, blurCanvas);
@@ -1444,21 +1447,16 @@ export class GameScene extends Phaser.Scene {
     if (this.menuState !== 'none') return;
     this.menuState = 'pause';
     this.physics.pause();
-    this.game.renderer.snapshot((snap) => {
-      if (this.menuState !== 'pause') return;
-      this.buildMenu(
-        'PAUSED',
-        [
-          { label: '繼續', onSelect: () => this.closePauseMenu() },
-          { label: '設定', onSelect: () => this.openSettingsOverlay() },
-          { label: '回主選單', onSelect: () => this.quitToTitle() },
-        ],
-        '#e8e8f0',
-      );
-      if (snap instanceof HTMLImageElement || snap instanceof HTMLCanvasElement) {
-        this.addMenuBlurBg(snap);
-      }
-    });
+    this.addMenuBlurBg();
+    this.buildMenu(
+      'PAUSED',
+      [
+        { label: '繼續', onSelect: () => this.closePauseMenu() },
+        { label: '設定', onSelect: () => this.openSettingsOverlay() },
+        { label: '回主選單', onSelect: () => this.quitToTitle() },
+      ],
+      '#e8e8f0',
+    );
   }
 
   private closePauseMenu() {
@@ -1474,32 +1472,27 @@ export class GameScene extends Phaser.Scene {
     this.menuState = 'death';
     if (this.currentSlot >= 0) recordDeath(this.currentSlot);
     this.physics.pause();
-    this.game.renderer.snapshot((snap) => {
-      if (this.menuState !== 'death') return;
-      this.buildMenu(
-        'YOU DIED',
-        [
-          {
-            label: '重試',
-            onSelect: () => {
-              this.destroyMenu();
-              this.menuState = 'none';
-              const save = this.currentSlot >= 0 ? loadSlot(this.currentSlot) : null;
-              if (save) {
-                this.startTransition({ stage: save.stage, from: 'save', duration: 120 });
-              } else {
-                this.startTransition({ stage: this.stageIndex, duration: 120 });
-              }
-            },
+    this.addMenuBlurBg();
+    this.buildMenu(
+      'YOU DIED',
+      [
+        {
+          label: '重試',
+          onSelect: () => {
+            this.destroyMenu();
+            this.menuState = 'none';
+            const save = this.currentSlot >= 0 ? loadSlot(this.currentSlot) : null;
+            if (save) {
+              this.startTransition({ stage: save.stage, from: 'save', duration: 120 });
+            } else {
+              this.startTransition({ stage: this.stageIndex, duration: 120 });
+            }
           },
-          { label: '回主選單', onSelect: () => this.quitToTitle() },
-        ],
-        '#ff5577',
-      );
-      if (snap instanceof HTMLImageElement || snap instanceof HTMLCanvasElement) {
-        this.addMenuBlurBg(snap);
-      }
-    });
+        },
+        { label: '回主選單', onSelect: () => this.quitToTitle() },
+      ],
+      '#ff5577',
+    );
   }
 
   private quitToTitle() {
