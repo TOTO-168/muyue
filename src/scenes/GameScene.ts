@@ -1512,6 +1512,7 @@ export class GameScene extends Phaser.Scene {
 
   private openSettingsOverlay() {
     this.scene.launch('SettingsScene', { fromGame: true });
+    this.scene.bringToTop('SettingsScene');
     this.scene.pause();
   }
 
