@@ -40,6 +40,8 @@ export class GameScene extends Phaser.Scene {
   private menuTexts: Phaser.GameObjects.Text[] = [];
   private menuObjects: Phaser.GameObjects.GameObject[] = [];
   private menuCursor = 0;
+  private menuCamera?: Phaser.Cameras.Scene2D.Camera;
+  private menuBlurFx?: Phaser.FX.Blur;
 
   private stageIndex = 0;
   private stage!: StageConfig;
@@ -116,6 +118,8 @@ export class GameScene extends Phaser.Scene {
     this.menuTexts = [];
     this.menuObjects = [];
     this.menuCursor = 0;
+    this.menuCamera = undefined;
+    this.menuBlurFx = undefined;
     this.transitioning = false;
     this.bossHpBg = undefined;
     this.bossHpFill = undefined;
@@ -1327,15 +1331,10 @@ export class GameScene extends Phaser.Scene {
     const w = this.scale.width;
     const h = this.scale.height;
     const bg = this.add
-      .rectangle(w / 2, h / 2, w, h, 0x000000, 0)
+      .rectangle(w / 2, h / 2, w, h, 0x05060c, 0)
       .setScrollFactor(0)
       .setDepth(199);
     this.tweens.add({ targets: bg, alpha: 0.55, duration: 220 });
-    const panel = this.add
-      .rectangle(w / 2, h / 2 - 12, 620, 430, 0x0c1020, 0.72)
-      .setStrokeStyle(2, 0x7dd3fc, 0.26)
-      .setScrollFactor(0)
-      .setDepth(199);
     const titleText = this.add
       .text(w / 2, h / 2 - 180, title, {
         fontFamily: '"Noto Serif TC", "Cinzel", Georgia, serif',
@@ -1348,7 +1347,7 @@ export class GameScene extends Phaser.Scene {
       .setAlpha(0)
       .setShadow(0, 0, titleColor, 10, true, true);
     this.tweens.add({ targets: titleText, alpha: 1, duration: 260 });
-    this.menuObjects.push(bg, panel, titleText);
+    this.menuObjects.push(bg, titleText);
     this.menuItems = items;
     this.menuTexts = items.map((item, i) => {
       const t = this.add
@@ -1377,7 +1376,34 @@ export class GameScene extends Phaser.Scene {
     });
     this.menuCursor = 0;
     this.refreshMenuCursor();
+    this.applyMenuVisuals();
     this.game.canvas.style.cursor = '';
+  }
+
+  private applyMenuVisuals() {
+    if (!this.menuBlurFx) {
+      this.menuBlurFx = this.cameras.main.postFX.addBlur(0, 2, 2, 1, 0xffffff, 6);
+    }
+    if (!this.menuCamera) {
+      this.menuCamera = this.cameras.add(0, 0, this.scale.width, this.scale.height);
+      this.menuCamera.setScroll(0, 0);
+    }
+    this.cameras.main.ignore(this.menuObjects);
+    const nonMenu = this.children.list.filter(
+      (o) => !this.menuObjects.includes(o),
+    );
+    this.menuCamera.ignore(nonMenu);
+  }
+
+  private removeMenuVisuals() {
+    if (this.menuBlurFx) {
+      this.cameras.main.postFX.remove(this.menuBlurFx);
+      this.menuBlurFx = undefined;
+    }
+    if (this.menuCamera) {
+      this.cameras.remove(this.menuCamera);
+      this.menuCamera = undefined;
+    }
   }
 
   private refreshMenuCursor() {
@@ -1406,6 +1432,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private destroyMenu() {
+    this.removeMenuVisuals();
     this.menuObjects.forEach((o) => o.destroy());
     this.menuObjects = [];
     this.menuTexts = [];
