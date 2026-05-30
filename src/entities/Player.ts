@@ -225,14 +225,23 @@ export class Player {
   }
 
   private showSlash(r: { x: number; y: number; w: number; h: number }) {
+    const FORWARD_TILT = 32;
+    const tilt =
+      this.attackDir === 'forward' ? (this.facing >= 0 ? FORWARD_TILT : -FORWARD_TILT) : 0;
+    const offset =
+      this.attackDir === 'forward'
+        ? { x: this.facing * 6, y: 10 }
+        : { x: 0, y: 0 };
     this.attackFlash
-      .setPosition(r.x, r.y)
+      .setPosition(r.x + offset.x, r.y + offset.y)
       .setVisible(true)
       .setAlpha(0.92)
-      .setScale(this.attackDir === 'forward' ? 0.82 : 0.7)
-      .setFlipX(this.attackDir === 'forward' && this.facing < 0);
+      .setScale(this.attackDir === 'forward' ? 0.88 : 0.7)
+      .setFlipX(this.attackDir === 'forward' && this.facing < 0)
+      .setData('ox', offset.x)
+      .setData('oy', offset.y);
     this.attackFlash.angle =
-      this.attackDir === 'up' ? -90 : this.attackDir === 'down' ? 90 : 0;
+      this.attackDir === 'up' ? -90 : this.attackDir === 'down' ? 90 : tilt;
     this.scene.tweens.killTweensOf(this.attackFlash);
     this.scene.tweens.add({
       targets: this.attackFlash,
@@ -422,7 +431,11 @@ export class Player {
     if (this.attackHitboxActive) {
       const r = this.attackHitboxRect();
       this.attackHitbox.setPosition(r.x, r.y);
-      if (this.attackFlash.visible) this.attackFlash.setPosition(r.x, r.y);
+      if (this.attackFlash.visible) {
+        const ox = this.attackFlash.getData('ox') ?? 0;
+        const oy = this.attackFlash.getData('oy') ?? 0;
+        this.attackFlash.setPosition(r.x + ox, r.y + oy);
+      }
       if (t > this.attackUntil) {
         this.attackHitbox.setVisible(false);
         this.attackHitboxActive = false;
