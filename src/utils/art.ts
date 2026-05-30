@@ -193,20 +193,138 @@ function createBoss(scene: Phaser.Scene, key: string, body: number, glow: number
 }
 
 function createSavePoint(scene: Phaser.Scene) {
+  const W = 80;
+  const H = 96;
+  const cx = W / 2;
+  const cy = H / 2;
   const g = scene.add.graphics().setVisible(false);
-  g.fillStyle(ART_COLORS.gold, 0.16);
-  g.fillCircle(32, 44, 28);
-  g.fillStyle(0x181b29, 1);
-  g.fillRoundedRect(22, 22, 20, 52, 8);
-  g.fillStyle(ART_COLORS.gold, 0.96);
-  g.fillCircle(32, 24, 12);
-  g.fillStyle(0xfff1bc, 1);
-  g.fillCircle(32, 24, 5);
-  g.lineStyle(3, ART_COLORS.gold, 0.75);
-  g.strokeRoundedRect(22, 22, 20, 52, 8);
-  g.lineStyle(2, ART_COLORS.jade, 0.5);
-  g.lineBetween(16, 76, 48, 76);
-  g.generateTexture(TEX.savePoint, 64, 92);
+
+  g.fillStyle(ART_COLORS.violet, 0.10);
+  g.fillCircle(cx, cy, 36);
+  g.fillStyle(ART_COLORS.violet, 0.18);
+  g.fillCircle(cx, cy, 22);
+
+  const top = { x: cx, y: cy - 28 };
+  const right = { x: cx + 18, y: cy };
+  const bottom = { x: cx, y: cy + 28 };
+  const left = { x: cx - 18, y: cy };
+
+  g.fillStyle(0x1a1430, 1);
+  g.beginPath();
+  g.moveTo(top.x, top.y);
+  g.lineTo(right.x, right.y);
+  g.lineTo(bottom.x, bottom.y);
+  g.lineTo(left.x, left.y);
+  g.closePath();
+  g.fillPath();
+
+  const facet = (
+    p1: { x: number; y: number },
+    p2: { x: number; y: number },
+    color: number,
+    alpha: number,
+  ) => {
+    g.fillStyle(color, alpha);
+    g.beginPath();
+    g.moveTo(p1.x, p1.y);
+    g.lineTo(p2.x, p2.y);
+    g.lineTo(cx, cy);
+    g.closePath();
+    g.fillPath();
+  };
+  facet(top, left, 0x9f7dff, 0.88);
+  facet(top, right, 0xc8b0ff, 0.95);
+  facet(right, bottom, 0x7b5cf0, 0.88);
+  facet(bottom, left, 0x5b3fc8, 0.82);
+
+  g.lineStyle(2, 0xe8dcff, 0.92);
+  g.beginPath();
+  g.moveTo(top.x, top.y);
+  g.lineTo(right.x, right.y);
+  g.lineTo(bottom.x, bottom.y);
+  g.lineTo(left.x, left.y);
+  g.closePath();
+  g.strokePath();
+
+  g.lineStyle(1, 0xe0d2ff, 0.55);
+  g.lineBetween(top.x, top.y, bottom.x, bottom.y);
+  g.lineBetween(left.x, left.y, right.x, right.y);
+
+  g.lineStyle(1.4, 0xfff8e0, 0.85);
+  g.beginPath();
+  g.moveTo(cx - 6, cy - 18);
+  g.lineTo(cx - 2, cy - 10);
+  g.lineTo(cx - 8, cy - 4);
+  g.lineTo(cx - 3, cy + 4);
+  g.lineTo(cx - 9, cy + 12);
+  g.strokePath();
+
+  g.lineStyle(1.2, 0xfff8e0, 0.7);
+  g.beginPath();
+  g.moveTo(cx + 4, cy - 14);
+  g.lineTo(cx + 10, cy - 6);
+  g.lineTo(cx + 6, cy + 3);
+  g.strokePath();
+
+  g.fillStyle(0xffffff, 0.95);
+  g.fillCircle(cx - 5, cy - 14, 2);
+  g.fillStyle(0xffffff, 0.55);
+  g.fillCircle(cx + 6, cy - 4, 1.4);
+
+  const shard = (
+    pts: Array<[number, number]>,
+    color: number,
+    alpha: number,
+  ) => {
+    g.fillStyle(color, alpha);
+    g.beginPath();
+    g.moveTo(pts[0][0], pts[0][1]);
+    for (let i = 1; i < pts.length; i++) g.lineTo(pts[i][0], pts[i][1]);
+    g.closePath();
+    g.fillPath();
+  };
+  shard(
+    [
+      [cx - 28, cy - 12],
+      [cx - 22, cy - 18],
+      [cx - 19, cy - 13],
+      [cx - 25, cy - 9],
+    ],
+    0xc8b0ff,
+    0.78,
+  );
+  shard(
+    [
+      [cx + 22, cy + 10],
+      [cx + 28, cy + 12],
+      [cx + 24, cy + 18],
+      [cx + 20, cy + 14],
+    ],
+    0x9f7dff,
+    0.72,
+  );
+  shard(
+    [
+      [cx + 19, cy - 22],
+      [cx + 24, cy - 24],
+      [cx + 26, cy - 18],
+      [cx + 21, cy - 17],
+    ],
+    0xc8b0ff,
+    0.65,
+  );
+  shard(
+    [
+      [cx - 24, cy + 14],
+      [cx - 19, cy + 16],
+      [cx - 21, cy + 22],
+      [cx - 26, cy + 19],
+    ],
+    0x7b5cf0,
+    0.6,
+  );
+
+  g.generateTexture(TEX.savePoint, W, H);
   g.destroy();
 }
 
