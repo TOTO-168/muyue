@@ -9,7 +9,7 @@ import { gamepadButtonName, getBindings } from '../utils/KeyBindings';
 import { loadSlot, recordDeath, writeSlot } from '../utils/save';
 import { EV } from '../events';
 import { spawnHitParticles } from '../utils/particles';
-import { getActivePad, padBtn, readStick, type ReadablePad } from '../utils/Pad';
+import { getActivePad, padBtn, PadEdgeTracker, readStick, type ReadablePad } from '../utils/Pad';
 import { createMoonlitBackdrop, drawPlatformVisual, ensureArtTextures } from '../utils/art';
 
 export class GameScene extends Phaser.Scene {
@@ -67,11 +67,11 @@ export class GameScene extends Phaser.Scene {
 
   private hitStopActive = false;
 
-  private padPrev: Record<string, boolean> = {};
-  private padNow: Record<string, boolean> = {};
+  // syncOnReappear=8 因為遊戲場景會透過 scene.restart 重建，玩家可能正
+  // 按著鍵切過，要在 pad 重連那段 grace 視窗把 prev 同步到 now，避免 justDown 誤觸發。
+  private padEdges = new PadEdgeTracker(8);
   private padAttackQueued = false;
-  private hadPadLastSample = false;
-  private padSyncFrames = 0;
+  private projectileRect = new Phaser.Geom.Rectangle();
 
   constructor() {
     super('GameScene');
@@ -269,11 +269,8 @@ export class GameScene extends Phaser.Scene {
     const kbDash = kb.addKey(bindings.dash);
     const kbHeal = kb.addKey(bindings.heal);
 
-    this.padPrev = {};
-    this.padNow = {};
+    this.padEdges.reset();
     this.padAttackQueued = false;
-    this.hadPadLastSample = false;
-    this.padSyncFrames = 0;
 
     return {
       left: () => kbLeft.isDown || this.padHeld('left'),
@@ -322,31 +319,15 @@ export class GameScene extends Phaser.Scene {
       out.heal = btn(gp.heal);
       out.pause = btn(gp.pause);
     }
-    const hasPad = !!pad;
-    if (hasPad && !this.hadPadLastSample) {
-      // Pad just (re)appeared. Phaser's Gamepad.update skips the first sync until
-      // pad.timestamp > _created, so button states populate one frame late. Hold a
-      // grace window where we keep padPrev synced to current so held buttons never
-      // register as just-down across that gap.
-      this.padSyncFrames = 8;
-    }
-    this.hadPadLastSample = hasPad;
-    if (this.padSyncFrames > 0) {
-      this.padPrev = out;
-      this.padSyncFrames--;
-    } else {
-      this.padPrev = this.padNow;
-    }
-    this.padNow = out;
-    if (out.attack && !this.padPrev.attack) {
-      if (
-        this.menuState === 'none' &&
-        !this.transitioning &&
-        this.player &&
-        !this.player.isDead
-      ) {
-        this.padAttackQueued = true;
-      }
+    this.padEdges.sample(out, !!pad);
+    if (
+      this.padEdges.justDown('attack') &&
+      this.menuState === 'none' &&
+      !this.transitioning &&
+      this.player &&
+      !this.player.isDead
+    ) {
+      this.padAttackQueued = true;
     }
   }
 
@@ -355,15 +336,15 @@ export class GameScene extends Phaser.Scene {
   }
 
   private padHeld(k: string): boolean {
-    return this.padNow[k] === true;
+    return this.padEdges.held(k);
   }
 
   private padJustDown(k: string): boolean {
-    return this.padNow[k] === true && this.padPrev[k] !== true;
+    return this.padEdges.justDown(k);
   }
 
   private padJustUp(k: string): boolean {
-    return this.padNow[k] !== true && this.padPrev[k] === true;
+    return this.padEdges.justUp(k);
   }
 
   private spawnPlayerAndEnemies(keys: PlayerKeys) {
@@ -1011,7 +992,6 @@ export class GameScene extends Phaser.Scene {
   }
 
   private setupEvents() {
-    for (const e of Object.values(EV)) this.events.off(e);
     this.events.on(EV.playerHp, (hp: number, healed?: boolean) => {
       this.hpBoxes.forEach((b, i) => b.setVisible(i < hp));
       this.updateLowHpOverlay();
@@ -1758,13 +1738,8 @@ export class GameScene extends Phaser.Scene {
       for (let i = projectiles.length - 1; i >= 0; i--) {
         const p = projectiles[i];
         const r = p.obj.radius;
-        const pBounds = new Phaser.Geom.Rectangle(
-          p.obj.x - r,
-          p.obj.y - r,
-          r * 2,
-          r * 2,
-        );
-        if (Phaser.Geom.Intersects.RectangleToRectangle(playerBounds, pBounds)) {
+        this.projectileRect.setTo(p.obj.x - r, p.obj.y - r, r * 2, r * 2);
+        if (Phaser.Geom.Intersects.RectangleToRectangle(playerBounds, this.projectileRect)) {
           this.player.takeHit(t, p.obj.x);
           e.consumeProjectile(p);
         }

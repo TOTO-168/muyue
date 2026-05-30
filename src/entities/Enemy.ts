@@ -247,10 +247,6 @@ export class Enemy {
       this.playAttackFlash();
       this.spawnProjectile(t);
     }
-
-    if (this.attackActive && t >= this.attackActiveUntil) {
-      this.attackActive = false;
-    }
   }
 
   private startTelegraph() {

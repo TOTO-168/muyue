@@ -281,7 +281,6 @@ export class Boss {
         break;
       }
     }
-    this.updateVisual(t);
   }
 
   private choosePattern(t: number, dx: number) {

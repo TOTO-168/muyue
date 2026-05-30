@@ -92,6 +92,7 @@ export class Player {
   private invincibleUntil = 0;
 
   private healStartT = 0;
+  private healLockUntil = 0;
   private healAura?: Phaser.GameObjects.Sprite;
   private shadow: Phaser.GameObjects.Ellipse;
 
@@ -132,6 +133,7 @@ export class Player {
   takeHit(t: number, fromX: number): boolean {
     if (this.isDead || t < this.invincibleUntil) return false;
     if (this.healing) this.cancelHeal();
+    this.healLockUntil = t + 240;
     this.hp -= 1;
     this.invincibleUntil = t + INVINCIBLE_MS;
     const dir = this.obj.x < fromX ? -1 : 1;
@@ -351,7 +353,8 @@ export class Player {
       this.hits >= HEAL_COST_HITS &&
       this.hp < PLAYER_MAX_HP &&
       t >= this.attackUntil &&
-      t >= this.dashUntil
+      t >= this.dashUntil &&
+      t >= this.healLockUntil
     ) {
       this.startHeal(t);
     }
@@ -449,6 +452,7 @@ export class Player {
   }
 
   private updateVisual(t: number) {
+    if (this.isDead) return;
     this.visual.setPosition(this.obj.x, this.obj.y - 5);
     this.visual.setFlipX(this.facing < 0);
     this.visual.setRotation(Phaser.Math.DegToRad(this.body.velocity.x * 0.006));

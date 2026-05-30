@@ -8,6 +8,7 @@ const TEX = {
   boss: 'muyue-boss',
   bossPhase2: 'muyue-boss-phase2',
   savePoint: 'muyue-save-point',
+  savePointGlow: 'muyue-save-point-glow',
   slash: 'muyue-slash',
   healGlow: 'muyue-heal-glow',
 };
@@ -36,8 +37,26 @@ export function ensureArtTextures(scene: Phaser.Scene) {
   createBoss(scene, TEX.boss, 0xc86b3f, 0xffd59a);
   createBoss(scene, TEX.bossPhase2, 0xff3858, 0xffccd6);
   createSavePoint(scene);
+  createSavePointGlow(scene);
   createSlash(scene);
   createHealGlow(scene);
+}
+
+function createSavePointGlow(scene: Phaser.Scene) {
+  const size = 256;
+  const tex = scene.textures.createCanvas(TEX.savePointGlow, size, size);
+  if (!tex) return;
+  const ctx = tex.getContext();
+  const cx = size / 2;
+  const cy = size / 2;
+  const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, cx);
+  grad.addColorStop(0, 'rgba(220, 200, 255, 0.65)');
+  grad.addColorStop(0.25, 'rgba(200, 176, 255, 0.32)');
+  grad.addColorStop(0.55, 'rgba(160, 130, 240, 0.12)');
+  grad.addColorStop(1, 'rgba(140, 110, 230, 0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, size, size);
+  tex.refresh();
 }
 
 export function createMoonlitBackdrop(scene: Phaser.Scene, worldW: number, worldH: number) {

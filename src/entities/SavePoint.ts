@@ -7,7 +7,7 @@ const HEIGHT = 72;
 export class SavePoint {
   scene: Phaser.Scene;
   obj: Phaser.GameObjects.Rectangle;
-  glow: Phaser.GameObjects.Ellipse;
+  glow: Phaser.GameObjects.Sprite;
   sprite: Phaser.GameObjects.Sprite;
   activated = false;
   x: number;
@@ -21,8 +21,10 @@ export class SavePoint {
     this.y = y;
     ensureArtTextures(scene);
     this.glow = scene.add
-      .ellipse(x, y - 8, WIDTH + 40, HEIGHT + 24, 0xc8b0ff, 0.14)
-      .setStrokeStyle(2, 0xc8b0ff, 0.22)
+      .sprite(x, y - 8, ART_TEX.savePointGlow)
+      .setScale(0.85)
+      .setAlpha(0.9)
+      .setBlendMode(Phaser.BlendModes.ADD)
       .setDepth(18);
     this.obj = scene.add
       .rectangle(x, y, WIDTH, HEIGHT, 0xffffff, 0.001)
@@ -39,23 +41,15 @@ export class SavePoint {
       alpha: '+=0.18',
       yoyo: true,
       repeat: -1,
-      duration: 1600,
+      duration: 2000,
       ease: 'Sine.InOut',
     });
     this.scene.tweens.add({
-      targets: this.sprite,
-      y: this.spriteBaseY - 5,
+      targets: [this.sprite, this.glow],
+      y: '-=7',
       yoyo: true,
       repeat: -1,
-      duration: 1800,
-      ease: 'Sine.InOut',
-    });
-    this.scene.tweens.add({
-      targets: this.glow,
-      y: this.glowBaseY - 3,
-      yoyo: true,
-      repeat: -1,
-      duration: 1800,
+      duration: 2000,
       ease: 'Sine.InOut',
     });
   }
