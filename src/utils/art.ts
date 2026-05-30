@@ -359,33 +359,138 @@ function createHealGlow(scene: Phaser.Scene) {
 
 function createSlash(scene: Phaser.Scene) {
   const g = scene.add.graphics().setVisible(false);
-  const W = 128;
-  const H = 96;
-  const cx = W * 0.16;
-  const cy = H / 2;
-  const radius = 80;
+  const W = 220;
+  const H = 160;
+  const px = 60;
+  const py = H / 2;
+  const radius = 104;
   const deg = (d: number) => Phaser.Math.DegToRad(d);
 
-  g.fillStyle(ART_COLORS.gold, 0.18);
+  const spike = (
+    ang: number,
+    len: number,
+    width: number,
+    alpha: number,
+    cx: number = px,
+    cy: number = py,
+  ) => {
+    const tipX = cx + Math.cos(deg(ang)) * len;
+    const tipY = cy + Math.sin(deg(ang)) * len;
+    const perp = ang + 90;
+    g.fillStyle(0xffffff, alpha);
+    g.beginPath();
+    g.moveTo(tipX, tipY);
+    g.lineTo(cx + Math.cos(deg(perp)) * width, cy + Math.sin(deg(perp)) * width);
+    g.lineTo(cx - Math.cos(deg(perp)) * width, cy - Math.sin(deg(perp)) * width);
+    g.closePath();
+    g.fillPath();
+  };
+
+  spike(196, 60, 4, 0.85);
+  spike(206, 78, 5, 0.92);
+  spike(216, 92, 5, 0.95);
+  spike(226, 82, 4, 0.9);
+  spike(236, 68, 4, 0.86);
+  spike(248, 50, 3, 0.78);
+  spike(188, 38, 2.5, 0.7);
+  spike(200, 30, 1.6, 0.6);
+  spike(212, 24, 1.4, 0.55);
+  spike(224, 46, 2, 0.7);
+  spike(232, 36, 1.6, 0.6);
+  spike(244, 28, 1.4, 0.55);
+
+  g.fillStyle(0xffffff, 0.18);
+  g.fillCircle(px, py, 28);
+  g.fillStyle(0xffffff, 0.45);
+  g.fillCircle(px, py, 14);
+  g.fillStyle(0xffffff, 1);
+  g.fillCircle(px, py, 6);
+  for (let k = 0; k < 10; k++) {
+    const ang = (k * 360) / 10;
+    spike(ang, 26 + (k % 2) * 6, 2.2, 0.95);
+  }
+
+  g.fillStyle(0xffffff, 0.16);
   g.beginPath();
-  g.arc(cx, cy, radius + 14, deg(-56), deg(56), false);
-  g.arc(cx, cy, radius - 14, deg(56), deg(-56), true);
+  g.arc(px, py, radius + 20, deg(-58), deg(58), false);
+  g.arc(px, py, radius - 20, deg(58), deg(-58), true);
   g.closePath();
   g.fillPath();
 
-  g.lineStyle(18, 0xfff0b0, 0.92);
+  g.lineStyle(15, 0xffffff, 0.92);
   g.beginPath();
-  g.arc(cx, cy, radius, deg(-50), deg(50), false);
+  g.arc(px, py, radius, deg(-50), deg(50), false);
   g.strokePath();
 
-  g.lineStyle(7, 0xffffff, 0.96);
+  g.lineStyle(5, 0xffffff, 1);
   g.beginPath();
-  g.arc(cx, cy, radius, deg(-42), deg(42), false);
+  g.arc(px, py, radius, deg(-44), deg(44), false);
   g.strokePath();
 
-  g.fillStyle(0xffffff, 0.9);
-  g.fillCircle(cx + Math.cos(deg(-50)) * radius, cy + Math.sin(deg(-50)) * radius, 3);
-  g.fillCircle(cx + Math.cos(deg(50)) * radius, cy + Math.sin(deg(50)) * radius, 3);
+  g.lineStyle(3.5, 0xffffff, 0.78);
+  g.beginPath();
+  g.arc(px, py, radius - 24, deg(-40), deg(40), false);
+  g.strokePath();
+  g.lineStyle(2.6, 0xffffff, 0.62);
+  g.beginPath();
+  g.arc(px, py, radius + 22, deg(-46), deg(38), false);
+  g.strokePath();
+  g.lineStyle(1.6, 0xffffff, 0.5);
+  g.beginPath();
+  g.arc(px, py, radius - 42, deg(-30), deg(32), false);
+  g.strokePath();
+
+  const arcTip = (angDeg: number, outerExt: number, innerExt: number, taper: number) => {
+    const tip = {
+      x: px + Math.cos(deg(angDeg)) * (radius + outerExt),
+      y: py + Math.sin(deg(angDeg)) * (radius + outerExt),
+    };
+    const back1 = {
+      x: px + Math.cos(deg(angDeg - taper)) * (radius - innerExt),
+      y: py + Math.sin(deg(angDeg - taper)) * (radius - innerExt),
+    };
+    const back2 = {
+      x: px + Math.cos(deg(angDeg + taper)) * (radius + 4),
+      y: py + Math.sin(deg(angDeg + taper)) * (radius + 4),
+    };
+    g.fillStyle(0xffffff, 1);
+    g.beginPath();
+    g.moveTo(tip.x, tip.y);
+    g.lineTo(back1.x, back1.y);
+    g.lineTo(back2.x, back2.y);
+    g.closePath();
+    g.fillPath();
+  };
+  arcTip(-52, 30, 16, 6);
+  arcTip(52, 30, 16, 6);
+  arcTip(-44, 14, 6, 4);
+  arcTip(44, 14, 6, 4);
+
+  const sparkles: Array<[number, number, number]> = [
+    [-38, 10, 4],
+    [-22, -10, 3],
+    [-6, 14, 3.2],
+    [8, -10, 3.4],
+    [24, 8, 3.8],
+    [40, -6, 3],
+    [-52, 32, 3],
+    [52, 32, 3],
+    [-30, -22, 2.4],
+    [30, -22, 2.6],
+  ];
+  for (const [ang, off, sz] of sparkles) {
+    const r = radius + off;
+    const x = px + Math.cos(deg(ang)) * r;
+    const y = py + Math.sin(deg(ang)) * r;
+    g.fillStyle(0xffffff, 0.92);
+    g.beginPath();
+    g.moveTo(x, y - sz);
+    g.lineTo(x + sz, y);
+    g.lineTo(x, y + sz);
+    g.lineTo(x - sz, y);
+    g.closePath();
+    g.fillPath();
+  }
 
   g.generateTexture(TEX.slash, W, H);
   g.destroy();
