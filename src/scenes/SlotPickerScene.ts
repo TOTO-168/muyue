@@ -13,17 +13,28 @@ import { createMoonlitBackdrop } from '../utils/art';
 
 type Mode = 'load' | 'new';
 
-const SLOT_LABEL_HEIGHT = 130;
+type SlotVisual = {
+  shadow: Phaser.GameObjects.Rectangle;
+  card: Phaser.GameObjects.Rectangle;
+  number: Phaser.GameObjects.Text;
+  caption: Phaser.GameObjects.Text;
+  stage: Phaser.GameObjects.Text;
+  meta: Phaser.GameObjects.Text;
+  rule: Phaser.GameObjects.Rectangle;
+  seal: Phaser.GameObjects.Arc;
+  sealText: Phaser.GameObjects.Text;
+};
+
+const SLOT_LABEL_HEIGHT = 164;
 
 export class SlotPickerScene extends Phaser.Scene {
   private mode: Mode = 'load';
   private slots: (SaveSlot | null)[] = [];
-  private cards: Phaser.GameObjects.Rectangle[] = [];
-  private labels: Phaser.GameObjects.Text[] = [];
+  private slotVisuals: SlotVisual[] = [];
   private cursor = 0;
   private confirmOverwriteSlot = -1;
   private confirmDeleteSlot = -1;
-  private confirmOverlay?: Phaser.GameObjects.Text;
+  private confirmOverlay?: Phaser.GameObjects.Container;
   private pad = new PadEdgeTracker(0);
   private kUp!: Phaser.Input.Keyboard.Key;
   private kDown!: Phaser.Input.Keyboard.Key;
@@ -47,8 +58,7 @@ export class SlotPickerScene extends Phaser.Scene {
     this.slots = loadSlots();
     this.confirmOverwriteSlot = -1;
     this.confirmDeleteSlot = -1;
-    this.cards = [];
-    this.labels = [];
+    this.slotVisuals = [];
     this.confirmOverlay = undefined;
     this.pad.reset();
 
@@ -61,30 +71,54 @@ export class SlotPickerScene extends Phaser.Scene {
     createMoonlitBackdrop(this, w, h);
 
     this.add
-      .text(w / 2, 120, this.mode === 'load' ? '繼續遊戲' : '新遊戲', {
+      .rectangle(w / 2 + 14, h / 2 + 24, 1250, 820, 0x02040a, 0.38)
+      .setStrokeStyle(1, 0x000000, 0);
+    this.add
+      .rectangle(w / 2, h / 2 + 10, 1250, 820, 0x080c15, 0.86)
+      .setStrokeStyle(1, 0xd9c88f, 0.24);
+
+    const headerRule = this.add.graphics();
+    headerRule.lineStyle(1, 0xd9c88f, 0.42);
+    headerRule.lineBetween(w / 2 - 470, 230, w / 2 - 110, 230);
+    headerRule.lineBetween(w / 2 + 110, 230, w / 2 + 470, 230);
+    headerRule.fillStyle(0xe7d7ac, 0.85);
+    headerRule.fillCircle(w / 2, 230, 4);
+
+    this.add
+      .text(w / 2, 116, this.mode === 'load' ? '繼續遊戲' : '新遊戲', {
         fontFamily: '"Noto Serif TC", "Cinzel", Georgia, serif',
-        fontSize: '76px',
-        color: '#ffe680',
+        fontSize: '68px',
+        color: '#e7d7ac',
       })
       .setOrigin(0.5)
-      .setShadow(0, 0, '#ffe680', 12, true, true);
+      .setLetterSpacing(8)
+      .setShadow(0, 0, '#d9c88f', 12, true, true);
 
     this.add
       .text(
         w / 2,
-        200,
-        this.mode === 'load' ? '選擇存檔' : '選擇要使用的存檔位置（已存在的會被覆蓋）',
-        { fontFamily: '"Noto Sans TC", "Inter", system-ui, sans-serif', fontSize: '24px', color: '#9999bb' },
+        184,
+        this.mode === 'load' ? '選擇一方月碑，續寫旅程' : '選擇一方月碑，刻下新的旅程',
+        {
+          fontFamily: '"Noto Sans TC", "Inter", system-ui, sans-serif',
+          fontSize: '21px',
+          color: '#8290a1',
+        },
       )
       .setOrigin(0.5);
 
-    const startY = 320;
-    const cardW = Math.min(900, w * 0.7);
+    const startY = 342;
+    const cardW = Math.min(1050, w * 0.72);
+    const cardH = 138;
+    const cardLeft = w / 2 - cardW / 2;
     for (let i = 0; i < MAX_SAVE_SLOTS; i++) {
       const y = startY + i * SLOT_LABEL_HEIGHT;
+      const shadow = this.add
+        .rectangle(w / 2 + 8, y + 9, cardW, cardH, 0x000000, 0.32)
+        .setStrokeStyle(1, 0x000000, 0);
       const card = this.add
-        .rectangle(w / 2, y, cardW, SLOT_LABEL_HEIGHT - 24, 0x121827, 0.78)
-        .setStrokeStyle(2, 0x7dd3fc, 0.28);
+        .rectangle(w / 2, y, cardW, cardH, 0x101725, 0.92)
+        .setStrokeStyle(1, 0x718ba3, 0.28);
       card.setInteractive({ useHandCursor: this.isUsable(i) });
       card.on('pointerover', () => {
         if (this.isUsable(i)) this.setCursor(i);
@@ -95,29 +129,73 @@ export class SlotPickerScene extends Phaser.Scene {
           this.confirm();
         }
       });
-      this.cards.push(card);
-
-      const label = this.add
-        .text(w / 2, y, this.labelFor(i), {
-          fontFamily: '"Noto Sans TC", "Inter", system-ui, sans-serif',
-          fontSize: '28px',
-          color: '#e8e8f0',
-          align: 'center',
+      const number = this.add
+        .text(cardLeft + 80, y - 12, ['I', 'II', 'III'][i] ?? String(i + 1), {
+          fontFamily: '"Cinzel", Georgia, serif',
+          fontSize: '42px',
+          color: '#d9c88f',
         })
         .setOrigin(0.5);
-      if (!this.isUsable(i)) {
-        card.setAlpha(0.35);
-        label.setColor('#6a6a82');
-      }
-      this.labels.push(label);
+      const caption = this.add
+        .text(cardLeft + 80, y + 32, `月碑 0${i + 1}`, {
+          fontFamily: '"Noto Sans TC", "Inter", system-ui, sans-serif',
+          fontSize: '15px',
+          color: '#718ba3',
+        })
+        .setOrigin(0.5)
+        .setLetterSpacing(3);
+      const rule = this.add
+        .rectangle(cardLeft + 166, y, 1, cardH - 34, 0xd9c88f, 0.28)
+        .setOrigin(0.5);
+      const stage = this.add
+        .text(cardLeft + 218, y - 22, this.stageLabelFor(i), {
+          fontFamily: '"Noto Serif TC", "Cinzel", Georgia, serif',
+          fontSize: '34px',
+          color: '#d7dce3',
+        })
+        .setOrigin(0, 0.5)
+        .setLetterSpacing(4);
+      const meta = this.add
+        .text(cardLeft + 220, y + 31, this.metaLabelFor(i), {
+          fontFamily: '"Noto Sans TC", "Inter", system-ui, sans-serif',
+          fontSize: '19px',
+          color: '#8290a1',
+        })
+        .setOrigin(0, 0.5);
+      const seal = this.add
+        .circle(cardLeft + cardW - 70, y, 31, 0x0a0f19, 0.9)
+        .setStrokeStyle(2, 0xd9c88f, 0.36);
+      const sealText = this.add
+        .text(cardLeft + cardW - 70, y, this.slots[i] ? '月' : '○', {
+          fontFamily: '"Noto Serif TC", Georgia, serif',
+          fontSize: this.slots[i] ? '23px' : '20px',
+          color: '#d9c88f',
+        })
+        .setOrigin(0.5);
+
+      this.slotVisuals.push({
+        shadow,
+        card,
+        number,
+        caption,
+        stage,
+        meta,
+        rule,
+        seal,
+        sealText,
+      });
     }
 
     this.add
       .text(
         w / 2,
-        h - 60,
-        '↑↓ / W S 選擇 · Enter / A 確定 · X / □ 刪除 · ESC / B 返回',
-        { fontFamily: '"Noto Sans TC", "Inter", system-ui, sans-serif', fontSize: '22px', color: '#6b6b88' },
+        h - 72,
+        '↑↓ / W S  選擇     Enter / A  確定     X / □  刪除     ESC / B  返回',
+        {
+          fontFamily: '"Noto Sans TC", "Inter", system-ui, sans-serif',
+          fontSize: '19px',
+          color: '#657080',
+        },
       )
       .setOrigin(0.5);
 
@@ -136,17 +214,21 @@ export class SlotPickerScene extends Phaser.Scene {
     this.setCursor(this.firstUsable());
   }
 
-  private labelFor(i: number): string {
+  private stageLabelFor(i: number): string {
     const slot = this.slots[i];
-    if (!slot) {
-      return `存檔 ${i + 1}\n（空）`;
-    }
+    if (!slot) return '尚未刻錄';
     const stageName = STAGES[slot.stage % STAGES.length]?.name ?? '?';
+    return `第 ${slot.stage + 1} 幕 · ${stageName}`;
+  }
+
+  private metaLabelFor(i: number): string {
+    const slot = this.slots[i];
+    if (!slot) return '等待新的旅程';
     const time = new Date(slot.updatedAt).toLocaleString('zh-TW', {
       hour12: false,
     });
-    const deaths = slot.deaths > 0 ? ` · 死亡 ${slot.deaths}` : '';
-    return `存檔 ${i + 1}  ·  ${stageName}${deaths}\n${time}`;
+    const deaths = slot.deaths > 0 ? `   ·   戰歿 ${slot.deaths}` : '';
+    return `最後記錄  ${time}${deaths}`;
   }
 
   private isUsable(i: number): boolean {
@@ -163,17 +245,38 @@ export class SlotPickerScene extends Phaser.Scene {
     if (!this.isUsable(i)) return;
     this.cursor = i;
     for (let idx = 0; idx < MAX_SAVE_SLOTS; idx++) {
-      const card = this.cards[idx];
-      const label = this.labels[idx];
-      if (!this.isUsable(idx)) continue;
-      if (idx === i) {
-        card.setStrokeStyle(3, 0xffe680);
-        label.setColor('#ffe680');
-        label.setScale(1.04);
+      const visual = this.slotVisuals[idx];
+      if (!visual) continue;
+      const usable = this.isUsable(idx);
+      const selected = usable && idx === i;
+      const alpha = usable ? 1 : 0.34;
+      visual.shadow.setAlpha(usable ? 0.32 : 0.12);
+      visual.card.setAlpha(alpha);
+      visual.number.setAlpha(alpha);
+      visual.caption.setAlpha(alpha);
+      visual.stage.setAlpha(alpha);
+      visual.meta.setAlpha(alpha);
+      visual.rule.setAlpha(alpha);
+      visual.seal.setAlpha(alpha);
+      visual.sealText.setAlpha(alpha);
+      if (selected) {
+        visual.card.setFillStyle(0x172234, 0.98);
+        visual.card.setStrokeStyle(2, 0xd9c88f, 0.86);
+        visual.stage.setColor('#e7d7ac');
+        visual.meta.setColor('#a9b4c0');
+        visual.number.setColor('#e7d7ac');
+        visual.rule.setFillStyle(0xd9c88f, 0.72);
+        visual.seal.setFillStyle(0x182335, 1).setStrokeStyle(2, 0xe7d7ac, 0.9);
+        visual.sealText.setColor('#e7d7ac');
       } else {
-        card.setStrokeStyle(2, 0x55557a);
-        label.setColor('#e8e8f0');
-        label.setScale(1);
+        visual.card.setFillStyle(0x101725, 0.92);
+        visual.card.setStrokeStyle(1, 0x718ba3, usable ? 0.28 : 0.14);
+        visual.stage.setColor(usable ? '#d7dce3' : '#718094');
+        visual.meta.setColor('#8290a1');
+        visual.number.setColor('#d9c88f');
+        visual.rule.setFillStyle(0xd9c88f, 0.28);
+        visual.seal.setFillStyle(0x0a0f19, 0.9).setStrokeStyle(2, 0xd9c88f, 0.36);
+        visual.sealText.setColor('#d9c88f');
       }
     }
   }
@@ -195,19 +298,7 @@ export class SlotPickerScene extends Phaser.Scene {
     if (!this.slots[this.cursor]) return;
     this.confirmDeleteSlot = this.cursor;
     this.confirmOverlay?.destroy();
-    this.confirmOverlay = this.add
-      .text(
-        this.scale.width / 2,
-        this.scale.height - 130,
-        '刪除這個存檔？\n再按 Enter / A 確認，ESC / B 取消',
-        {
-          fontFamily: '"Noto Serif TC", "Cinzel", Georgia, serif',
-          fontSize: '28px',
-          color: '#ff8888',
-          align: 'center',
-        },
-      )
-      .setOrigin(0.5);
+    this.showConfirmOverlay('抹除此方月碑？', '再按 Enter / A 確認   ·   ESC / B 取消');
   }
 
   private applyDelete() {
@@ -217,17 +308,7 @@ export class SlotPickerScene extends Phaser.Scene {
     this.confirmDeleteSlot = -1;
     this.confirmOverlay?.destroy();
     this.confirmOverlay = undefined;
-    for (let i = 0; i < MAX_SAVE_SLOTS; i++) {
-      this.labels[i]?.setText(this.labelFor(i));
-      if (!this.isUsable(i)) {
-        this.cards[i]?.setAlpha(0.35);
-        this.cards[i]?.setStrokeStyle(2, 0x55557a);
-        this.labels[i]?.setColor('#6a6a82');
-        this.labels[i]?.setScale(1);
-      } else {
-        this.cards[i]?.setAlpha(1);
-      }
-    }
+    for (let i = 0; i < MAX_SAVE_SLOTS; i++) this.refreshSlotText(i);
     if (this.mode === 'load' && this.slots.every((s) => s === null)) {
       this.cancel();
       return;
@@ -260,22 +341,62 @@ export class SlotPickerScene extends Phaser.Scene {
     }
     if (this.slots[this.cursor]) {
       this.confirmOverwriteSlot = this.cursor;
-      this.confirmOverlay = this.add
-        .text(
-          this.scale.width / 2,
-          this.scale.height - 130,
-          '覆蓋這個存檔？\n再按 Enter / A 確認，ESC / B 取消',
-          {
-            fontFamily: '"Noto Serif TC", "Cinzel", Georgia, serif',
-            fontSize: '28px',
-            color: '#ff8888',
-            align: 'center',
-          },
-        )
-        .setOrigin(0.5);
+      this.showConfirmOverlay(
+        '覆寫此方月碑？',
+        '舊有記憶將被抹除   ·   Enter / A 確認   ·   ESC / B 取消',
+      );
       return;
     }
     this.startGame(this.cursor);
+  }
+
+  private refreshSlotText(i: number) {
+    const visual = this.slotVisuals[i];
+    if (!visual) return;
+    visual.stage.setText(this.stageLabelFor(i));
+    visual.meta.setText(this.metaLabelFor(i));
+    visual.sealText
+      .setText(this.slots[i] ? '月' : '○')
+      .setFontSize(this.slots[i] ? 23 : 20);
+  }
+
+  private showConfirmOverlay(title: string, detail: string) {
+    this.confirmOverlay?.destroy();
+    const w = this.scale.width;
+    const h = this.scale.height;
+    const shade = this.add.rectangle(w / 2, h / 2, w, h, 0x02040a, 0.7);
+    const shadow = this.add.rectangle(w / 2 + 12, h / 2 + 12, 760, 250, 0x000000, 0.42);
+    const panel = this.add
+      .rectangle(w / 2, h / 2, 760, 250, 0x0a0f19, 0.98)
+      .setStrokeStyle(2, 0xb96a78, 0.72);
+    const seal = this.add
+      .circle(w / 2, h / 2 - 72, 24, 0x30151e, 0.9)
+      .setStrokeStyle(1, 0xd08a95, 0.7);
+    const sealText = this.add
+      .text(w / 2, h / 2 - 72, '蝕', {
+        fontFamily: '"Noto Serif TC", Georgia, serif',
+        fontSize: '17px',
+        color: '#e7b6bd',
+      })
+      .setOrigin(0.5);
+    const titleText = this.add
+      .text(w / 2, h / 2 - 18, title, {
+        fontFamily: '"Noto Serif TC", "Cinzel", Georgia, serif',
+        fontSize: '34px',
+        color: '#e7b6bd',
+      })
+      .setOrigin(0.5)
+      .setLetterSpacing(4);
+    const detailText = this.add
+      .text(w / 2, h / 2 + 50, detail, {
+        fontFamily: '"Noto Sans TC", "Inter", system-ui, sans-serif',
+        fontSize: '19px',
+        color: '#9ca7b5',
+      })
+      .setOrigin(0.5);
+    this.confirmOverlay = this.add
+      .container(0, 0, [shade, shadow, panel, seal, sealText, titleText, detailText])
+      .setDepth(200);
   }
 
   private cancel() {

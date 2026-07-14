@@ -1,6 +1,11 @@
 import Phaser from 'phaser';
 import { EV } from '../events';
-import { ART_TEX, ensureArtTextures } from '../utils/art';
+import {
+  ART_TEX,
+  CHARACTER_ANIM,
+  ensureArtTextures,
+  ensureCharacterAnimations,
+} from '../utils/art';
 
 const WIDTH = 60;
 const HEIGHT = 64;
@@ -38,6 +43,8 @@ export class Enemy {
   private maxX: number;
   private hitImmuneUntil = 0;
   private stunUntil = 0;
+  private hurtUntil = 0;
+  private contactAttackUntil = 0;
   private state: AggroState = 'patrol';
 
   private telegraph?: Phaser.GameObjects.Arc;
@@ -56,6 +63,11 @@ export class Enemy {
   private hpFill: Phaser.GameObjects.Rectangle;
   private hpVisibleUntil = 0;
   private shadow: Phaser.GameObjects.Ellipse;
+  private visualScaleX = 1;
+  private visualScaleY = 1;
+  private visualOffsetY = -15;
+  private visualHeight = 100;
+  private animated = false;
 
   constructor(
     scene: Phaser.Scene,
@@ -67,21 +79,48 @@ export class Enemy {
     this.scene = scene;
     this.canAttack = canAttack;
     ensureArtTextures(scene);
+    ensureCharacterAnimations(scene);
+    const sheet = canAttack ? ART_TEX.enemyCasterSheet : ART_TEX.enemySheet;
+    this.animated = scene.textures.exists(sheet);
     this.shadow = scene.add
       .ellipse(x, y + HEIGHT / 2 - 2, WIDTH * 0.78, 10, 0x000000, 0.24)
       .setDepth(19);
     this.obj = scene.add.rectangle(x, y, WIDTH, HEIGHT, 0xffffff, 0.001);
     this.obj.setStrokeStyle(0, 0x000000, 0);
+    this.visualOffsetY = canAttack ? -25 : -15;
+    this.visualHeight = canAttack ? 120 : 100;
     this.visual = scene.add
-      .sprite(x, y, canAttack ? ART_TEX.enemyCaster : ART_TEX.enemy)
+      .sprite(
+        x,
+        y,
+        this.animated
+          ? sheet
+          : canAttack
+            ? ART_TEX.enemyCaster
+            : ART_TEX.enemy,
+      )
       .setDepth(28);
+    if (this.animated) this.visual.setScale(this.visualHeight / 192);
+    else this.visual.setDisplaySize(100, this.visualHeight);
+    this.visualScaleX = this.visual.scaleX;
+    this.visualScaleY = this.visual.scaleY;
+    this.playAnim(
+      canAttack ? CHARACTER_ANIM.caster.idle : CHARACTER_ANIM.enemy.idle,
+    );
     this.hpBg = scene.add
-      .rectangle(x, y - HEIGHT / 2 - 16, WIDTH, 7, 0x0a0a14, 0.72)
+      .rectangle(x, y + this.visualOffsetY - this.visualHeight / 2 - 12, WIDTH, 7, 0x0a0a14, 0.72)
       .setStrokeStyle(1, 0xffffff, 0.28)
       .setDepth(20)
       .setVisible(false);
     this.hpFill = scene.add
-      .rectangle(x - WIDTH / 2 + 2, y - HEIGHT / 2 - 16, WIDTH - 4, 5, 0xffe680, 0.95)
+      .rectangle(
+        x - WIDTH / 2 + 2,
+        y + this.visualOffsetY - this.visualHeight / 2 - 12,
+        WIDTH - 4,
+        5,
+        0xffe680,
+        0.95,
+      )
       .setOrigin(0, 0.5)
       .setDepth(21)
       .setVisible(false);
@@ -108,10 +147,17 @@ export class Enemy {
     return undefined;
   }
 
+  playContactAttack(t: number) {
+    if (this.canAttack || this.isDead) return;
+    this.contactAttackUntil = t + 180;
+    this.playAnim(CHARACTER_ANIM.enemy.attack, false);
+  }
+
   takeHit(t: number, knockX: number): boolean {
     if (this.isDead || t < this.hitImmuneUntil) return false;
     this.hitImmuneUntil = t + HIT_IMMUNE_MS;
     this.stunUntil = t + STUN_MS;
+    this.hurtUntil = t + 180;
     this.hp -= 1;
     this.hpVisibleUntil = t + 3200;
     this.updateHealthBar(t);
@@ -127,6 +173,10 @@ export class Enemy {
       this.attackReadyAt = Math.max(this.attackReadyAt, t + ATTACK_COOLDOWN_MS);
     }
     this.visual.setTint(0xffffff);
+    this.playAnim(
+      this.canAttack ? CHARACTER_ANIM.caster.hurt : CHARACTER_ANIM.enemy.hurt,
+      false,
+    );
     this.scene.time.delayedCall(80, () => this.visual.clearTint());
     this.scene.tweens.add({ targets: this.visual, alpha: 0.35, duration: 60, yoyo: true });
     if (this.hp <= 0) this.die();
@@ -158,14 +208,19 @@ export class Enemy {
     this.projectiles = [];
     this.hpBg.setVisible(false);
     this.hpFill.setVisible(false);
+    this.playAnim(
+      this.canAttack ? CHARACTER_ANIM.caster.death : CHARACTER_ANIM.enemy.death,
+      false,
+    );
     this.scene.events.emit(EV.enemyDied);
     this.scene.tweens.add({
-      targets: [this.visual, this.shadow],
+      targets: this.visual,
       alpha: 0,
-      scaleX: 1.6,
-      scaleY: 0.2,
+      scaleX: this.visualScaleX * 1.6,
+      scaleY: this.visualScaleY * 0.2,
       angle: 30,
-      duration: 260,
+      delay: 260,
+      duration: 340,
       onComplete: () => {
         this.visual.destroy();
         this.shadow.destroy();
@@ -174,6 +229,7 @@ export class Enemy {
         this.obj.destroy();
       },
     });
+    this.scene.tweens.add({ targets: this.shadow, alpha: 0, delay: 260, duration: 340 });
   }
 
   update(t: number, dt: number, playerX: number, playerY: number) {
@@ -373,7 +429,7 @@ export class Enemy {
   }
 
   private updateHealthBar(t: number) {
-    const y = this.obj.y - HEIGHT / 2 - 16;
+    const y = this.obj.y + this.visualOffsetY - this.visualHeight / 2 - 12;
     this.hpBg.setPosition(this.obj.x, y);
     this.hpFill.setPosition(this.obj.x - WIDTH / 2 + 2, y);
     this.hpFill.scaleX = Math.max(0, this.hp / MAX_HP);
@@ -384,9 +440,37 @@ export class Enemy {
   }
 
   private updateVisual(t: number) {
-    this.visual.setPosition(this.obj.x, this.obj.y - 4 + Math.sin(t / 180 + this.homeX) * 1.2);
+    this.visual.setPosition(
+      this.obj.x,
+      this.obj.y + this.visualOffsetY + Math.sin(t / 180 + this.homeX) * 1.2,
+    );
     this.visual.setFlipX(this.dir < 0);
     this.visual.setRotation(Phaser.Math.DegToRad(this.body.velocity.x * 0.006));
     this.shadow.setPosition(this.obj.x, this.obj.y + HEIGHT / 2 - 2);
+    this.syncAnimation(t);
+  }
+
+  private playAnim(key: string, ignoreIfPlaying = true) {
+    if (!this.animated) return;
+    this.visual.play(key, ignoreIfPlaying);
+  }
+
+  private syncAnimation(t: number) {
+    if (this.canAttack) {
+      const a = CHARACTER_ANIM.caster;
+      if (t < this.hurtUntil) this.playAnim(a.hurt);
+      else if (this.attackActive) this.playAnim(a.release);
+      else if (this.attackWindupUntil > 0) this.playAnim(a.windup);
+      else if (Math.abs(this.body.velocity.x) > 8) this.playAnim(a.move);
+      else this.playAnim(a.idle);
+      return;
+    }
+
+    const a = CHARACTER_ANIM.enemy;
+    if (t < this.hurtUntil) this.playAnim(a.hurt);
+    else if (t < this.contactAttackUntil) this.playAnim(a.attack);
+    else if (Math.abs(this.body.velocity.x) > 8 || !this.body.blocked.down) {
+      this.playAnim(a.move);
+    } else this.playAnim(a.idle);
   }
 }

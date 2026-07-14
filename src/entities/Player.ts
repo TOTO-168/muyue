@@ -1,9 +1,17 @@
 import Phaser from 'phaser';
 import { EV } from '../events';
-import { ART_TEX, ensureArtTextures } from '../utils/art';
+import {
+  ART_TEX,
+  CHARACTER_ANIM,
+  ensureArtTextures,
+  ensureCharacterAnimations,
+} from '../utils/art';
 
 const WIDTH = 52;
 const HEIGHT = 84;
+const VISUAL_W = 100;
+const VISUAL_H = 144;
+const VISUAL_Y = -27;
 
 const MOVE_SPEED = 440;
 const AIR_CONTROL = 0.78;
@@ -90,22 +98,35 @@ export class Player {
 
   private recoilUntil = 0;
   private invincibleUntil = 0;
+  private hurtUntil = 0;
 
   private healStartT = 0;
   private healLockUntil = 0;
   private healAura?: Phaser.GameObjects.Sprite;
   private shadow: Phaser.GameObjects.Ellipse;
+  private visualScaleX = 1;
+  private visualScaleY = 1;
+  private animated = false;
 
   constructor(scene: Phaser.Scene, x: number, y: number, keys: PlayerKeys) {
     this.scene = scene;
     this.keys = keys;
     ensureArtTextures(scene);
+    ensureCharacterAnimations(scene);
+    this.animated = scene.textures.exists(ART_TEX.playerSheet);
     this.shadow = scene.add
       .ellipse(x, y + HEIGHT / 2 - 2, WIDTH * 0.72, 10, 0x000000, 0.24)
       .setDepth(24);
     this.obj = scene.add.rectangle(x, y, WIDTH, HEIGHT, 0xffffff, 0.001);
     this.obj.setStrokeStyle(0, 0x000000, 0);
-    this.visual = scene.add.sprite(x, y, ART_TEX.player).setDepth(32);
+    this.visual = scene.add
+      .sprite(x, y, this.animated ? ART_TEX.playerSheet : ART_TEX.player)
+      .setDepth(32);
+    if (this.animated) this.visual.setScale(VISUAL_H / 192);
+    else this.visual.setDisplaySize(VISUAL_W, VISUAL_H);
+    this.visualScaleX = this.visual.scaleX;
+    this.visualScaleY = this.visual.scaleY;
+    this.playAnim(CHARACTER_ANIM.player.idle);
     scene.physics.add.existing(this.obj);
     this.body = this.obj.body as Phaser.Physics.Arcade.Body;
     this.body.setCollideWorldBounds(true);
@@ -115,6 +136,7 @@ export class Player {
       .setVisible(false);
     this.attackFlash = scene.add
       .sprite(0, 0, ART_TEX.slash)
+      .setTint(0xeadcad)
       .setDepth(45)
       .setVisible(false)
       .setAlpha(0);
@@ -136,6 +158,8 @@ export class Player {
     this.healLockUntil = t + 240;
     this.hp -= 1;
     this.invincibleUntil = t + INVINCIBLE_MS;
+    this.hurtUntil = t + 180;
+    this.playAnim(CHARACTER_ANIM.player.hurt, false);
     const dir = this.obj.x < fromX ? -1 : 1;
     this.body.setVelocityX(dir * HURT_KNOCK_X);
     this.body.setVelocityY(HURT_KNOCK_Y);
@@ -157,16 +181,19 @@ export class Player {
     this.body.setVelocity(0, 0);
     this.body.setAllowGravity(false);
     if (this.healing) this.cancelHeal();
+    this.playAnim(CHARACTER_ANIM.player.death, false);
     this.scene.events.emit(EV.playerDead);
     this.scene.tweens.add({
-      targets: [this.visual, this.shadow],
+      targets: this.visual,
       alpha: 0,
       angle: 90,
-      scaleX: 0.6,
-      scaleY: 0.6,
-      duration: 300,
+      scaleX: this.visualScaleX * 0.6,
+      scaleY: this.visualScaleY * 0.6,
+      delay: 260,
+      duration: 340,
       ease: 'Cubic.Out',
     });
+    this.scene.tweens.add({ targets: this.shadow, alpha: 0, delay: 260, duration: 340 });
   }
 
   applyHitGain() {
@@ -189,6 +216,7 @@ export class Player {
     if (t < this.attackReadyAt) return;
     this.attackUntil = t + ATTACK_DURATION;
     this.attackReadyAt = t + ATTACK_COOLDOWN;
+    this.playAnim(CHARACTER_ANIM.player.attack, false);
     if (this.keys.down()) this.attackDir = 'down';
     else if (this.keys.up()) this.attackDir = 'up';
     else this.attackDir = 'forward';
@@ -259,6 +287,7 @@ export class Player {
   private startHeal(t: number) {
     this.healing = true;
     this.healStartT = t;
+    this.playAnim(CHARACTER_ANIM.player.heal, false);
     this.body.setVelocityX(0);
     if (!this.healAura) {
       const targetSize = Math.max(WIDTH, HEIGHT) + 56;
@@ -409,6 +438,7 @@ export class Player {
       this.body.setVelocityY(0);
       this.body.setAllowGravity(false);
       this.invincibleUntil = Math.max(this.invincibleUntil, t + DASH_DURATION + 30);
+      this.playAnim(CHARACTER_ANIM.player.dash, false);
       this.scene.events.emit(EV.playerDash);
       this.scene.tweens.add({
         targets: this.obj,
@@ -417,6 +447,31 @@ export class Player {
         duration: 80,
         yoyo: true,
       });
+      for (let i = 0; i < 3; i++) {
+        this.scene.time.delayedCall(i * 45, () => {
+          if (this.isDead) return;
+          const echo = this.scene.add
+            .sprite(
+              this.obj.x,
+              this.obj.y + VISUAL_Y,
+              this.visual.texture.key,
+              this.visual.frame.name,
+            )
+            .setScale(this.visual.scaleX, this.visual.scaleY)
+            .setFlipX(this.facing < 0)
+            .setTint(0x718ba3)
+            .setAlpha(0.22 - i * 0.045)
+            .setDepth(27);
+          this.scene.tweens.add({
+            targets: echo,
+            alpha: 0,
+            scaleX: echo.scaleX * 1.22,
+            duration: 190,
+            ease: 'Cubic.Out',
+            onComplete: () => echo.destroy(),
+          });
+        });
+      }
     }
     if (!dashing && !this.body.allowGravity) {
       this.body.setAllowGravity(true);
@@ -453,14 +508,37 @@ export class Player {
 
   private updateVisual(t: number) {
     if (this.isDead) return;
-    this.visual.setPosition(this.obj.x, this.obj.y - 5);
+    this.visual.setPosition(this.obj.x, this.obj.y + VISUAL_Y);
     this.visual.setFlipX(this.facing < 0);
     this.visual.setRotation(Phaser.Math.DegToRad(this.body.velocity.x * 0.006));
     const bob = this.body.blocked.down ? Math.sin(t / 120) * 1.3 : 0;
     this.visual.y += bob;
     const airborne = Phaser.Math.Clamp(Math.abs(this.body.velocity.y) / 1400, 0, 1);
+    const dashing = t < this.dashUntil;
+    this.visual.setScale(
+      this.visualScaleX * (dashing ? 1.14 : 1),
+      this.visualScaleY * (dashing ? 0.88 : 1 + airborne * 0.035),
+    );
     this.shadow.setPosition(this.obj.x, this.obj.y + HEIGHT / 2 - 2);
     this.shadow.setScale(1 - airborne * 0.35, 1);
     this.shadow.setAlpha(0.24 - airborne * 0.1);
+    this.syncAnimation(t);
+  }
+
+  private playAnim(key: string, ignoreIfPlaying = true) {
+    if (!this.animated) return;
+    this.visual.play(key, ignoreIfPlaying);
+  }
+
+  private syncAnimation(t: number) {
+    const a = CHARACTER_ANIM.player;
+    if (t < this.hurtUntil) this.playAnim(a.hurt);
+    else if (this.healing) this.playAnim(a.heal);
+    else if (t < this.attackUntil) this.playAnim(a.attack);
+    else if (t < this.dashUntil) this.playAnim(a.dash);
+    else if (!this.body.blocked.down) {
+      this.playAnim(this.body.velocity.y < 40 ? a.jump : a.fall);
+    } else if (Math.abs(this.body.velocity.x) > 20) this.playAnim(a.run);
+    else this.playAnim(a.idle);
   }
 }
