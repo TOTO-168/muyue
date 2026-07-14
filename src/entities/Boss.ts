@@ -1,6 +1,11 @@
 import Phaser from 'phaser';
 import { EV } from '../events';
-import { ART_TEX, ensureArtTextures } from '../utils/art';
+import {
+  ART_TEX,
+  CHARACTER_ANIM,
+  ensureArtTextures,
+  ensureCharacterAnimations,
+} from '../utils/art';
 
 const WIDTH = 100;
 const HEIGHT = 120;
@@ -50,12 +55,18 @@ export class Boss {
   isDead = false;
   dir: 1 | -1 = -1;
   phase: 1 | 2 = 1;
+  visualScaleX = 1;
+  visualScaleY = 1;
+  readonly visualOffsetY = -44;
 
   private state: State = 'approach';
   private stateUntil = 0;
   private nextActionAt = 0;
   private hitImmuneUntil = 0;
   private stunUntil = 0;
+  private hurtUntil = 0;
+  private entranceAnimUntil = 0;
+  private animated = false;
 
   private attackHitbox: Phaser.GameObjects.Rectangle;
   private attackActive = false;
@@ -70,12 +81,27 @@ export class Boss {
   constructor(scene: Phaser.Scene, x: number, y: number) {
     this.scene = scene;
     ensureArtTextures(scene);
+    ensureCharacterAnimations(scene);
+    this.animated =
+      scene.textures.exists(ART_TEX.bossSheet) &&
+      scene.textures.exists(ART_TEX.bossPhase2Sheet);
     this.shadow = scene.add
       .ellipse(x, y + HEIGHT / 2 - 2, WIDTH * 0.9, 18, 0x000000, 0.3)
       .setDepth(21);
     this.obj = scene.add.rectangle(x, y, WIDTH, HEIGHT, 0xffffff, 0.001);
     this.obj.setStrokeStyle(0, 0x000000, 0);
-    this.visual = scene.add.sprite(x, y - 8, ART_TEX.boss).setDepth(30);
+    this.visual = scene.add
+      .sprite(
+        x,
+        y + this.visualOffsetY,
+        this.animated ? ART_TEX.bossSheet : ART_TEX.boss,
+      )
+      .setDepth(30);
+    if (this.animated) this.visual.setScale(216 / 224);
+    else this.visual.setDisplaySize(180, 216);
+    this.visualScaleX = this.visual.scaleX;
+    this.visualScaleY = this.visual.scaleY;
+    this.playAnim(CHARACTER_ANIM.boss1.idle);
     scene.physics.add.existing(this.obj);
     this.body = this.obj.body as Phaser.Physics.Arcade.Body;
     this.body.setCollideWorldBounds(true);
@@ -105,7 +131,9 @@ export class Boss {
     if (this.isDead || t < this.hitImmuneUntil) return false;
     this.hitImmuneUntil = t + HIT_IMMUNE_MS;
     this.stunUntil = t + STUN_MS;
+    this.hurtUntil = t + 180;
     this.hp -= 1;
+    this.playAnim(this.anims().hurt, false);
     this.body.setVelocityX(knockX * 0.22);
     if (this.body.blocked.down) this.body.setVelocityY(-180);
     this.scene.tweens.add({ targets: this.visual, alpha: 0.35, duration: 60, yoyo: true });
@@ -120,12 +148,18 @@ export class Boss {
 
   private enterPhase2() {
     this.phase = 2;
-    this.visual.setTexture(ART_TEX.bossPhase2);
+    if (this.animated) {
+      this.visual.anims.stop();
+      this.visual.setTexture(ART_TEX.bossPhase2Sheet, 13);
+      this.playAnim(CHARACTER_ANIM.boss2.hurt, false);
+    } else {
+      this.visual.setTexture(ART_TEX.bossPhase2);
+    }
     this.scene.cameras.main.shake(260, 0.012);
     this.scene.tweens.add({
       targets: this.visual,
-      scaleX: 1.15,
-      scaleY: 1.15,
+      scaleX: this.visualScaleX * 1.15,
+      scaleY: this.visualScaleY * 1.15,
       yoyo: true,
       duration: 240,
     });
@@ -151,14 +185,16 @@ export class Boss {
       this.entranceShockwaveHitbox = undefined;
     }
     this.entranceShockwaveUntil = 0;
+    this.playAnim(this.anims().death, false);
     this.scene.events.emit(EV.bossDied);
     this.scene.tweens.add({
-      targets: [this.visual, this.shadow],
+      targets: this.visual,
       alpha: 0,
-      scaleX: 1.6,
-      scaleY: 0.2,
+      scaleX: this.visualScaleX * 1.6,
+      scaleY: this.visualScaleY * 0.2,
       angle: 30,
-      duration: 700,
+      delay: 350,
+      duration: 500,
       onComplete: () => {
         this.visual.destroy();
         this.shadow.destroy();
@@ -168,6 +204,7 @@ export class Boss {
         this.attackFlash.destroy();
       },
     });
+    this.scene.tweens.add({ targets: this.shadow, alpha: 0, delay: 350, duration: 500 });
   }
 
   private speedMul(): number {
@@ -359,6 +396,15 @@ export class Boss {
     this.spawnShockwave();
   }
 
+  playEntranceFall() {
+    this.playAnim(this.anims().slamFall, false);
+  }
+
+  playEntranceLand(t: number) {
+    this.entranceAnimUntil = t + SLAM_LAND_MS;
+    this.playAnim(this.anims().slamLand, false);
+  }
+
   triggerEntranceShockwave(worldW: number, groundY: number) {
     const t = this.scene.time.now;
     const damageH = 36;
@@ -460,12 +506,40 @@ export class Boss {
   }
 
   private updateVisual(t: number) {
-    this.visual.setPosition(this.obj.x, this.obj.y - 8 + Math.sin(t / 180) * 1.6);
+    this.visual.setPosition(
+      this.obj.x,
+      this.obj.y + this.visualOffsetY + Math.sin(t / 180) * 1.6,
+    );
     this.visual.setFlipX(this.dir < 0);
     this.visual.setRotation(Phaser.Math.DegToRad(this.body.velocity.x * 0.004));
     this.shadow.setPosition(this.obj.x, this.obj.y + HEIGHT / 2 - 2);
     const airborne = Phaser.Math.Clamp(Math.abs(this.body.velocity.y) / 1600, 0, 1);
     this.shadow.setScale(1 - airborne * 0.28, 1);
     this.shadow.setAlpha(0.3 - airborne * 0.12);
+    this.syncAnimation(t);
+  }
+
+  private anims() {
+    return this.phase === 1 ? CHARACTER_ANIM.boss1 : CHARACTER_ANIM.boss2;
+  }
+
+  private playAnim(key: string, ignoreIfPlaying = true) {
+    if (!this.animated) return;
+    this.visual.play(key, ignoreIfPlaying);
+  }
+
+  private syncAnimation(t: number) {
+    const a = this.anims();
+    if (t < this.hurtUntil) this.playAnim(a.hurt);
+    else if (t < this.entranceAnimUntil) return;
+    else if (this.state === 'lunge_windup') this.playAnim(a.lungeWindup);
+    else if (this.state === 'lunge_active') this.playAnim(a.lungeActive);
+    else if (this.state === 'slam_rise') this.playAnim(a.slamRise);
+    else if (this.state === 'slam_fall') this.playAnim(a.slamFall);
+    else if (this.state === 'slam_land') this.playAnim(a.slamLand);
+    else if (this.state === 'slam_recover') this.playAnim(a.slamRecover);
+    else if (this.state === 'approach' && Math.abs(this.body.velocity.x) > 8) {
+      this.playAnim(a.walk);
+    } else this.playAnim(a.idle);
   }
 }

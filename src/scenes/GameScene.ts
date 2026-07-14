@@ -5,7 +5,7 @@ import { Boss } from '../entities/Boss';
 import { SavePoint } from '../entities/SavePoint';
 import { sfx } from '../utils/Sfx';
 import { STAGES, StageConfig } from '../stages';
-import { gamepadButtonName, getBindings } from '../utils/KeyBindings';
+import { gamepadButtonName, getBindings, subscribeBindings } from '../utils/KeyBindings';
 import { loadSlot, recordDeath, writeSlot } from '../utils/save';
 import { EV } from '../events';
 import { spawnHitParticles } from '../utils/particles';
@@ -50,6 +50,7 @@ export class GameScene extends Phaser.Scene {
   private leftDoor?: Phaser.GameObjects.Rectangle;
   private rightDoor?: Phaser.GameObjects.Rectangle;
   private leftDoorArrow?: Phaser.GameObjects.Text;
+  private rightDoorArrow?: Phaser.GameObjects.Text;
   private doorIgnoreUntil = 0;
   private bossDoorLocked = false;
   private bossDoorBumpAt = 0;
@@ -134,6 +135,7 @@ export class GameScene extends Phaser.Scene {
     this.bossDoorLocked = false;
     this.bossDoorBumpAt = 0;
     this.leftDoorArrow = undefined;
+    this.rightDoorArrow = undefined;
     this.hitStopActive = false;
 
     this.setupWorld();
@@ -158,47 +160,7 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.setBounds(0, 0, w, h);
     this.cameras.main.resetFX();
     this.cameras.main.fadeIn(400, 0, 0, 0);
-    createMoonlitBackdrop(this, w, h);
-
-    this.spawnParallaxLayer(0.18, 130, 0x111827, 0.42, -52);
-    this.spawnParallaxLayer(0.38, 92, 0x172033, 0.76, -48);
-    this.spawnParallaxLayer(0.66, 56, 0x202a3d, 0.68, -44);
-  }
-
-  private spawnParallaxLayer(
-    scrollFactor: number,
-    silhouetteWidth: number,
-    color: number,
-    alpha: number,
-    depth: number,
-  ) {
-    const w = this.worldW;
-    const h = this.worldH;
-    const span = Math.ceil(w / 220);
-    const yRange = Math.max(1, h - 600);
-    const seed = Math.floor(scrollFactor * 100);
-    const g = this.add
-      .graphics()
-      .setScrollFactor(scrollFactor)
-      .setDepth(depth);
-    g.fillStyle(color, alpha);
-    for (let i = 0; i < span; i++) {
-      const x = 160 + i * 220 + ((i + seed) * 53) % 60;
-      const ph = 320 + (((i + seed) * 37) % 240) * 2;
-      const baseY = (((i + seed) * 113) % yRange) + 40;
-      const half = silhouetteWidth / 2;
-      const peakSkew = (((i + seed) * 29) % 40) - 20;
-      const shoulder = Math.min(ph * 0.45, 120 + ((i + seed) * 17) % 80);
-      const bottomY = baseY + ph;
-      g.beginPath();
-      g.moveTo(x - half, bottomY);
-      g.lineTo(x - half * 0.78, baseY + shoulder);
-      g.lineTo(x + peakSkew, baseY);
-      g.lineTo(x + half * 0.78, baseY + shoulder * 0.85);
-      g.lineTo(x + half, bottomY);
-      g.closePath();
-      g.fillPath();
-    }
+    createMoonlitBackdrop(this, w, h, this.stageIndex);
   }
 
   private setupPlatforms() {
@@ -220,14 +182,7 @@ export class GameScene extends Phaser.Scene {
   private setupInput(): PlayerKeys {
     const kb = this.input.keyboard!;
     const bindings = getBindings().keyboard;
-    const captureList = [
-      ...new Set([
-        ...Object.values(bindings),
-        'ESC',
-        'ENTER',
-      ]),
-    ].join(',');
-    kb.addCapture(captureList);
+    kb.addCapture([...new Set([...Object.values(bindings), 'ESC', 'ENTER'])].join(','));
     this.input.mouse?.disableContextMenu();
     let mouseAttackQueued = false;
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
@@ -252,22 +207,41 @@ export class GameScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.game.events.off(Phaser.Core.Events.BLUR, onBlur);
       this.game.canvas.style.cursor = '';
+      if (this.menuOverlayDom) {
+        this.menuOverlayDom.remove();
+        this.menuOverlayDom = undefined;
+      }
+      this.removeMenuBlurBg();
     });
-    this.pauseKey = kb.addKey(bindings.pause);
     this.escKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
-    this.menuUpKey = kb.addKey(bindings.up);
-    this.menuDownKey = kb.addKey(bindings.down);
     this.menuConfirmKey = kb.addKey(Phaser.Input.Keyboard.KeyCodes.ENTER);
-    this.menuConfirmKey2 = kb.addKey(bindings.jump);
-
-    const kbLeft = kb.addKey(bindings.left);
-    const kbRight = kb.addKey(bindings.right);
-    const kbUp = kb.addKey(bindings.up);
-    const kbDown = kb.addKey(bindings.down);
-    const kbJump = kb.addKey(bindings.jump);
-    const kbAttack = kb.addKey(bindings.attack);
-    const kbDash = kb.addKey(bindings.dash);
-    const kbHeal = kb.addKey(bindings.heal);
+    let kbLeft = kb.addKey(bindings.left);
+    let kbRight = kb.addKey(bindings.right);
+    let kbUp = kb.addKey(bindings.up);
+    let kbDown = kb.addKey(bindings.down);
+    let kbJump = kb.addKey(bindings.jump);
+    let kbAttack = kb.addKey(bindings.attack);
+    let kbDash = kb.addKey(bindings.dash);
+    let kbHeal = kb.addKey(bindings.heal);
+    const refreshKeys = () => {
+      const next = getBindings().keyboard;
+      kb.addCapture([...new Set([...Object.values(next), 'ESC', 'ENTER'])].join(','));
+      this.pauseKey = kb.addKey(next.pause);
+      this.menuUpKey = kb.addKey(next.up);
+      this.menuDownKey = kb.addKey(next.down);
+      this.menuConfirmKey2 = kb.addKey(next.jump);
+      kbLeft = kb.addKey(next.left);
+      kbRight = kb.addKey(next.right);
+      kbUp = kb.addKey(next.up);
+      kbDown = kb.addKey(next.down);
+      kbJump = kb.addKey(next.jump);
+      kbAttack = kb.addKey(next.attack);
+      kbDash = kb.addKey(next.dash);
+      kbHeal = kb.addKey(next.heal);
+    };
+    refreshKeys();
+    const unsubscribeBindings = subscribeBindings(refreshKeys);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, unsubscribeBindings);
 
     this.padEdges.reset();
     this.padAttackQueued = false;
@@ -445,25 +419,49 @@ export class GameScene extends Phaser.Scene {
 
   private setupDoors() {
     const groundTop = this.getGroundTop();
-    const w = 80;
-    const h = 150;
+    const w = 86;
+    const h = 162;
     const ly = groundTop - h / 2;
-    const arrowStyle = { fontFamily: '"Noto Sans TC", "Inter", system-ui, sans-serif', fontSize: '34px', color: '#ffe680' };
+    const arrowStyle = {
+      fontFamily: '"Cinzel", "Noto Serif TC", Georgia, serif',
+      fontSize: '40px',
+      color: '#eadcad',
+    };
     const pulse: Phaser.GameObjects.Rectangle[] = [];
+    const drawGate = (x: number) => {
+      const g = this.add.graphics().setDepth(7);
+      g.fillStyle(0x050812, 0.9);
+      g.fillRect(x - 56, ly - h / 2 - 10, 112, h + 30);
+      g.fillStyle(0x182332, 0.94);
+      g.fillRect(x - 47, ly - h / 2, 14, h + 12);
+      g.fillRect(x + 33, ly - h / 2, 14, h + 12);
+      g.fillRect(x - 57, ly - h / 2 - 14, 114, 16);
+      g.fillTriangle(x - 67, ly - h / 2 + 2, x + 67, ly - h / 2 + 2, x, ly - h / 2 - 42);
+      g.lineStyle(2, 0xd8bd72, 0.38);
+      g.lineBetween(x - 54, ly - h / 2 - 10, x + 54, ly - h / 2 - 10);
+      g.lineStyle(1, 0x718ba3, 0.4);
+      g.strokeRoundedRect(x - 35, ly - h / 2 + 19, 70, h - 22, 34);
+      return this.add
+        .rectangle(x, ly + 8, w - 28, h - 36, 0x111a2a, 0.82)
+        .setStrokeStyle(2, 0xd8bd72, 0.58)
+        .setDepth(8);
+    };
     if (!this.stage.noLeftDoor) {
       const lx = this.getLeftDoorX();
-      this.leftDoor = this.add
-        .rectangle(lx, ly, w, h, 0x2a2a52, 0.85)
-        .setStrokeStyle(3, 0xffe680);
-      this.leftDoorArrow = this.add.text(lx, ly, '<', arrowStyle).setOrigin(0.5);
+      this.leftDoor = drawGate(lx);
+      this.leftDoorArrow = this.add
+        .text(lx, ly + 6, '‹', arrowStyle)
+        .setOrigin(0.5)
+        .setDepth(9);
       pulse.push(this.leftDoor);
     }
     if (!this.stage.noRightDoor) {
       const rx = this.getRightDoorX();
-      this.rightDoor = this.add
-        .rectangle(rx, ly, w, h, 0x2a2a52, 0.85)
-        .setStrokeStyle(3, 0xffe680);
-      this.add.text(rx, ly, '>', arrowStyle).setOrigin(0.5);
+      this.rightDoor = drawGate(rx);
+      this.rightDoorArrow = this.add
+        .text(rx, ly + 6, '›', arrowStyle)
+        .setOrigin(0.5)
+        .setDepth(9);
       pulse.push(this.rightDoor);
     }
     if (pulse.length) {
@@ -479,14 +477,24 @@ export class GameScene extends Phaser.Scene {
     if ((this.bossEntrancePending || this.boss) && this.leftDoor) {
       this.lockBossDoor();
     }
+    this.refreshExitDoor();
+  }
+
+  private refreshExitDoor() {
+    if (!this.rightDoor || !this.rightDoorArrow || this.stage.boss) return;
+    const locked = this.enemyTotal > 0 && this.enemiesKilled < this.enemyTotal;
+    this.rightDoor.setFillStyle(locked ? 0x24121c : 0x111a2a, 0.88);
+    this.rightDoor.setStrokeStyle(2, locked ? 0xb7425f : 0xd8bd72, locked ? 0.72 : 0.58);
+    this.rightDoorArrow.setText(locked ? '×' : '›');
+    this.rightDoorArrow.setColor(locked ? '#d86b82' : '#eadcad');
   }
 
   private lockBossDoor() {
     if (!this.leftDoor || this.bossDoorLocked) return;
     this.bossDoorLocked = true;
     this.tweens.killTweensOf(this.leftDoor);
-    this.leftDoor.setFillStyle(0x3a141e, 0.9);
-    this.leftDoor.setStrokeStyle(3, 0xff4d6d);
+    this.leftDoor.setFillStyle(0x32131d, 0.92);
+    this.leftDoor.setStrokeStyle(2, 0xc75b68, 0.86);
     this.leftDoor.setAlpha(0.95);
     this.leftDoorArrow?.setText('✕');
     this.leftDoorArrow?.setColor('#ff4d6d');
@@ -495,8 +503,8 @@ export class GameScene extends Phaser.Scene {
   private unlockBossDoor() {
     if (!this.leftDoor || !this.bossDoorLocked) return;
     this.bossDoorLocked = false;
-    this.leftDoor.setFillStyle(0x2a2a52, 0.85);
-    this.leftDoor.setStrokeStyle(3, 0xffe680);
+    this.leftDoor.setFillStyle(0x111a2a, 0.82);
+    this.leftDoor.setStrokeStyle(2, 0xd8bd72, 0.58);
     this.leftDoorArrow?.setText('<');
     this.leftDoorArrow?.setColor('#ffe680');
     this.tweens.add({
@@ -510,24 +518,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private bumpBossDoor() {
-    if (!this.leftDoor) return;
-    const now = this.time.now;
-    if (now - this.bossDoorBumpAt < 220) return;
-    this.bossDoorBumpAt = now;
-    sfx.doorLocked();
-    this.tweens.killTweensOf(this.leftDoor);
-    const baseX = this.getLeftDoorX();
-    this.leftDoor.x = baseX;
-    this.tweens.add({
-      targets: this.leftDoor,
-      x: baseX - 6,
-      yoyo: true,
-      repeat: 2,
-      duration: 50,
-      onComplete: () => {
-        if (this.leftDoor) this.leftDoor.x = baseX;
-      },
-    });
+    this.bumpLockedDoor(this.leftDoor, this.getLeftDoorX());
   }
 
   private setupSavePoints() {
@@ -548,7 +539,6 @@ export class GameScene extends Phaser.Scene {
     if (this.transitioning) return;
     if (this.time.now < this.doorIgnoreUntil) return;
     if (this.player.isDead) return;
-    if (this.boss?.isDead) return;
     const px = this.player.obj.x;
     const vx = this.player.body.velocity.x;
     const DOOR_BAND = 32;
@@ -564,8 +554,38 @@ export class GameScene extends Phaser.Scene {
       Math.abs(px - this.getRightDoorX()) < DOOR_BAND &&
       vx > 10
     ) {
-      this.enterDoor('right');
+      if (!this.stage.boss && this.enemiesKilled < this.enemyTotal) {
+        if (this.bumpLockedDoor(this.rightDoor, this.getRightDoorX())) {
+          this.showHudToast('月門封閉 · 擊破殘影');
+        }
+      } else {
+        this.enterDoor('right');
+      }
     }
+  }
+
+  private bumpLockedDoor(
+    door: Phaser.GameObjects.Rectangle | undefined,
+    baseX: number,
+  ): boolean {
+    if (!door) return false;
+    const now = this.time.now;
+    if (now - this.bossDoorBumpAt < 500) return false;
+    this.bossDoorBumpAt = now;
+    sfx.doorLocked();
+    this.tweens.killTweensOf(door);
+    door.x = baseX;
+    this.tweens.add({
+      targets: door,
+      x: baseX - 6,
+      yoyo: true,
+      repeat: 2,
+      duration: 50,
+      onComplete: () => {
+        if (door.active) door.x = baseX;
+      },
+    });
+    return true;
   }
 
   private enterDoor(side: 'left' | 'right') {
@@ -629,34 +649,53 @@ export class GameScene extends Phaser.Scene {
   }
 
   private setupHUD() {
-    const hpStartX = 90;
+    const hud = this.add.graphics().setScrollFactor(0).setDepth(96);
+    hud.fillStyle(0x050811, 0.76);
+    hud.fillRoundedRect(38, 28, 284, 132, 8);
+    hud.lineStyle(1, 0xd8bd72, 0.32);
+    hud.strokeRoundedRect(38, 28, 284, 132, 8);
+    hud.lineBetween(58, 87, 302, 87);
+    hud.fillStyle(0xd8bd72, 0.58);
+    hud.fillRect(38, 48, 3, 90);
+
+    this.add
+      .text(60, 43, '月  魄', {
+        fontFamily: '"Noto Serif TC", "Cinzel", Georgia, serif',
+        fontSize: '15px',
+        color: '#9ca9b8',
+      })
+      .setScrollFactor(0)
+      .setDepth(100);
+
+    const hpStartX = 190;
     for (let i = 0; i < PLAYER_MAX_HP; i++) {
       this.add
-        .circle(hpStartX + i * 60, 52, 25, 0x0a0a14, 0.7)
-        .setStrokeStyle(2, 0xffd6e0, 0.28)
+        .circle(hpStartX + i * 44, 58, 16, 0x111823, 0.94)
+        .setStrokeStyle(2, 0xeadcad, 0.32)
         .setScrollFactor(0)
         .setDepth(99);
       const r = this.add
-        .circle(hpStartX + i * 60, 52, 17, 0xff4d6d, 0.95)
-        .setStrokeStyle(3, 0xffccd6, 0.9)
+        .circle(hpStartX + i * 44, 58, 10, 0xc94f68, 0.98)
+        .setStrokeStyle(2, 0xffc3cb, 0.72)
         .setScrollFactor(0)
         .setDepth(100);
       r.setVisible(i < this.player.hp);
       this.hpBoxes.push(r);
     }
-    const hudLeftX = 65;
-    const energyW = 26;
-    const energyH = 14;
-    const energyStartX = hudLeftX + energyW / 2;
+    const hudLeftX = 60;
+    const energyW = 66;
+    const energyH = 8;
+    const energyStartX = hudLeftX;
     for (let i = 0; i < PLAYER_MAX_ENERGY; i++) {
-      const cx = energyStartX + i * 34;
+      const cx = energyStartX + i * 78;
       this.add
-        .rectangle(cx, 100, energyW, energyH)
-        .setStrokeStyle(2, 0xffffff, 0.45)
+        .rectangle(cx, 105, energyW, energyH, 0x0a1019, 0.95)
+        .setOrigin(0, 0.5)
+        .setStrokeStyle(1, 0x8bc7b4, 0.32)
         .setScrollFactor(0)
         .setDepth(100);
       const fill = this.add
-        .rectangle(cx - energyW / 2 + 1, 100, energyW - 2, energyH - 2, 0x88ffcc, 0.9)
+        .rectangle(cx + 1, 105, energyW - 2, energyH - 2, 0x8bc7b4, 0.94)
         .setOrigin(0, 0.5)
         .setScrollFactor(0)
         .setDepth(101);
@@ -664,42 +703,67 @@ export class GameScene extends Phaser.Scene {
       this.energyFills.push(fill);
     }
     this.add
-      .rectangle(hudLeftX, 132, 96, 12, 0x0a0a14, 0.75)
+      .text(hudLeftX, 124, '瞬 步', {
+        fontFamily: '"Noto Sans TC", "Inter", system-ui, sans-serif',
+        fontSize: '13px',
+        color: '#718ba3',
+      })
+      .setScrollFactor(0)
+      .setDepth(100);
+    this.add
+      .rectangle(hudLeftX + 50, 133, 180, 7, 0x070b12, 0.95)
       .setOrigin(0, 0.5)
-      .setStrokeStyle(1, 0xffffff, 0.35)
+      .setStrokeStyle(1, 0x718ba3, 0.36)
       .setScrollFactor(0)
       .setDepth(100);
     this.dashFill = this.add
-      .rectangle(hudLeftX + 1, 132, 94, 10, 0x88aaff, 0.9)
+      .rectangle(hudLeftX + 51, 133, 178, 5, 0x718ba3, 0.92)
       .setOrigin(0, 0.5)
       .setScrollFactor(0)
       .setDepth(101);
+
+    const centerX = this.scale.width / 2;
+    this.add
+      .rectangle(centerX, 59, 480, 74, 0x050811, 0.62)
+      .setStrokeStyle(1, 0xd8bd72, 0.22)
+      .setScrollFactor(0)
+      .setDepth(96);
     this.killText = this.add
-      .text(this.scale.width - 48, 52, '', {
+      .text(this.scale.width - 64, 65, '', {
         fontFamily: '"Noto Sans TC", "Inter", system-ui, sans-serif',
-        fontSize: '28px',
-        color: '#c0c0d8',
+        fontSize: '22px',
+        color: '#d8bd72',
       })
       .setOrigin(1, 0.5)
       .setScrollFactor(0)
       .setDepth(100)
       .setShadow(0, 0, '#000000', 8);
     this.add
+      .rectangle(this.scale.width - 170, 65, 236, 58, 0x050811, 0.66)
+      .setStrokeStyle(1, 0xd8bd72, 0.26)
+      .setScrollFactor(0)
+      .setDepth(96);
+    this.add
       .text(
-        this.scale.width / 2,
-        52,
-        `${this.stage.name} · STAGE ${this.stageIndex + 1} / ${STAGES.length}`,
-        { fontFamily: '"Noto Sans TC", "Inter", system-ui, sans-serif', fontSize: '28px', color: '#c0c0d8' },
+        centerX,
+        45,
+        `第 ${this.stageIndex + 1} 幕  ·  ${this.stage.name}`,
+        {
+          fontFamily: '"Noto Serif TC", "Cinzel", Georgia, serif',
+          fontSize: '24px',
+          color: '#eadcad',
+          letterSpacing: 3,
+        },
       )
       .setOrigin(0.5, 0.5)
       .setScrollFactor(0)
       .setDepth(100)
       .setShadow(0, 0, '#000000', 8);
     this.objectiveText = this.add
-      .text(this.scale.width / 2, 92, '', {
+      .text(centerX, 76, '', {
         fontFamily: '"Noto Sans TC", "Inter", system-ui, sans-serif',
-        fontSize: '22px',
-        color: '#8f8faa',
+        fontSize: '17px',
+        color: '#8393a6',
       })
       .setOrigin(0.5, 0.5)
       .setScrollFactor(0)
@@ -716,26 +780,26 @@ export class GameScene extends Phaser.Scene {
   private setupBossHud() {
     if (!this.stage.boss) return;
     const cx = this.scale.width / 2;
-    const y = this.scale.height - 64;
-    const w = 720;
-    const h = 22;
+    const y = this.scale.height - 58;
+    const w = 760;
+    const h = 16;
     this.bossHpLabel = this.add
-      .text(cx, y - 28, this.stage.name, {
+      .text(cx, y - 30, `月蝕之主 · ${this.stage.name}`, {
         fontFamily: '"Noto Serif TC", "Cinzel", Georgia, serif',
-        fontSize: '26px',
-        color: '#ffe680',
+        fontSize: '22px',
+        color: '#eadcad',
       })
       .setOrigin(0.5)
       .setScrollFactor(0)
       .setDepth(100)
       .setAlpha(0);
     this.bossHpBg = this.add
-      .rectangle(cx, y, w, h, 0x14141e, 0.85)
+      .rectangle(cx, y, w, h, 0x060810, 0.94)
       .setScrollFactor(0)
       .setDepth(100)
       .setAlpha(0);
     this.bossHpFill = this.add
-      .rectangle(cx - w / 2 + 2, y, w - 4, h - 4, 0xff3858)
+      .rectangle(cx - w / 2 + 3, y, w - 6, h - 6, 0xc94f68)
       .setOrigin(0, 0.5)
       .setScrollFactor(0)
       .setDepth(101)
@@ -743,7 +807,7 @@ export class GameScene extends Phaser.Scene {
     this.bossHpTargetWidth = 1;
     this.bossHpFrame = this.add
       .rectangle(cx, y, w, h)
-      .setStrokeStyle(2, 0xffe680, 0.9)
+      .setStrokeStyle(1, 0xd8bd72, 0.7)
       .setScrollFactor(0)
       .setDepth(102)
       .setAlpha(0);
@@ -812,8 +876,8 @@ export class GameScene extends Phaser.Scene {
         });
         this.tweens.add({
           targets: this.boss.visual,
-          scaleX: 1.08,
-          scaleY: 1.08,
+          scaleX: this.boss.visualScaleX * 1.08,
+          scaleY: this.boss.visualScaleY * 1.08,
           duration: 900,
           yoyo: true,
           repeat: -1,
@@ -915,8 +979,12 @@ export class GameScene extends Phaser.Scene {
     if (!this.boss || this.bossEntranceState !== 'hovering') return;
     this.bossEntranceState = 'falling';
     this.tweens.killTweensOf(this.boss.visual);
-    this.boss.visual.setScale(1, 1);
-    this.boss.visual.setPosition(this.boss.obj.x, this.boss.obj.y - 8);
+    this.boss.visual.setScale(this.boss.visualScaleX, this.boss.visualScaleY);
+    this.boss.visual.setPosition(
+      this.boss.obj.x,
+      this.boss.obj.y + this.boss.visualOffsetY,
+    );
+    this.boss.playEntranceFall();
     if (this.bossPlatformCollider) this.bossPlatformCollider.active = false;
     this.boss.body.setAllowGravity(true);
     this.boss.body.setVelocityY(200);
@@ -965,11 +1033,12 @@ export class GameScene extends Phaser.Scene {
     if (this.bossPlatformCollider) this.bossPlatformCollider.active = true;
     const cam = this.cameras.main;
     cam.shake(320, 0.026);
+    this.boss.playEntranceLand(this.time.now);
     this.boss.triggerEntranceShockwave(this.worldW, this.getGroundTop());
     this.tweens.add({
       targets: this.boss.visual,
-      scaleX: 1.25,
-      scaleY: 0.85,
+      scaleX: this.boss.visualScaleX * 1.25,
+      scaleY: this.boss.visualScaleY * 0.85,
       duration: 90,
       yoyo: true,
       ease: 'Cubic.Out',
@@ -992,6 +1061,9 @@ export class GameScene extends Phaser.Scene {
   }
 
   private setupEvents() {
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      for (const name of Object.values(EV)) this.events.removeAllListeners(name);
+    });
     this.events.on(EV.playerHp, (hp: number, healed?: boolean) => {
       this.hpBoxes.forEach((b, i) => b.setVisible(i < hp));
       this.updateLowHpOverlay();
@@ -1013,9 +1085,15 @@ export class GameScene extends Phaser.Scene {
     this.events.on(EV.playerHealStart, () => sfx.dash());
     this.events.on(EV.enemyDied, () => sfx.enemyDie());
     this.events.on(EV.enemyHit, () => sfx.hitEnemy());
-    this.events.on(EV.playerJump, () => sfx.jump());
+    this.events.on(EV.playerJump, () => {
+      sfx.jump();
+      spawnHitParticles(this, this.player.obj.x, this.player.obj.y + 42, 0x718ba3, 4, 3);
+    });
     this.events.on(EV.playerAttack, () => sfx.attack());
-    this.events.on(EV.playerDash, () => sfx.dash());
+    this.events.on(EV.playerDash, () => {
+      sfx.dash();
+      spawnHitParticles(this, this.player.obj.x, this.player.obj.y, 0x8da5bd, 8, 5);
+    });
     this.events.on(EV.bossLunge, () => sfx.attack());
     this.events.on(EV.bossSlam, () => sfx.bossSlam());
     this.events.on(EV.bossTelegraph, () => sfx.bossTelegraph());
@@ -1027,12 +1105,12 @@ export class GameScene extends Phaser.Scene {
       this.time.delayedCall(900, () => this.showVictory());
     });
     this.events.on(EV.playerDead, () => {
-      this.time.delayedCall(120, () => this.openDeathMenu());
+      this.time.delayedCall(620, () => this.openDeathMenu());
     });
   }
 
   private updateKillText() {
-    this.killText.setText(`敵 ${this.enemiesKilled} / ${this.enemyTotal}`);
+    this.killText.setText(`殘影  ${this.enemiesKilled} / ${this.enemyTotal}`);
     this.updateObjectiveText();
   }
 
@@ -1059,7 +1137,7 @@ export class GameScene extends Phaser.Scene {
     if (!this.dashFill) return;
     const progress = this.player.dashCooldownProgress(t);
     this.dashFill.scaleX = progress;
-    this.dashFill.fillColor = progress >= 1 ? 0x88aaff : 0x4e5d88;
+    this.dashFill.fillColor = progress >= 1 ? 0x8da5bd : 0x46566d;
     if (!this.lastDashReady && progress >= 1) {
       this.tweens.add({
         targets: this.dashFill,
@@ -1087,6 +1165,7 @@ export class GameScene extends Phaser.Scene {
   private showStageClear() {
     if (this.stageCleared) return;
     this.stageCleared = true;
+    this.refreshExitDoor();
     this.updateObjectiveText();
     sfx.stageClear();
     const w = this.scale.width;
@@ -1320,7 +1399,7 @@ export class GameScene extends Phaser.Scene {
     overlay.style.cssText = [
       'position:fixed',
       'inset:0',
-      'background:rgba(5, 6, 12, 0.5)',
+      'background:radial-gradient(circle at 50% 42%, rgba(29,39,57,.38), rgba(3,5,10,.82) 62%)',
       'z-index:1000',
       'display:flex',
       'flex-direction:column',
@@ -1335,33 +1414,61 @@ export class GameScene extends Phaser.Scene {
       'cursor:default',
     ].join(';');
 
+    const panel = document.createElement('div');
+    panel.style.cssText = [
+      'min-width:min(560px,70vw)',
+      'padding:64px 78px 58px',
+      'display:flex',
+      'flex-direction:column',
+      'align-items:stretch',
+      'background:linear-gradient(160deg,rgba(11,17,29,.94),rgba(5,8,15,.88))',
+      'border:1px solid rgba(216,189,114,.38)',
+      'box-shadow:0 30px 90px rgba(0,0,0,.62),inset 3px 0 0 rgba(216,189,114,.42)',
+      'clip-path:polygon(0 0,calc(100% - 26px) 0,100% 26px,100% 100%,26px 100%,0 calc(100% - 26px))',
+    ].join(';');
+
+    const eyebrow = document.createElement('div');
+    eyebrow.textContent = titleColor === '#ff5577' ? 'FALLEN BENEATH THE MOON' : 'MOONLIT INTERLUDE';
+    eyebrow.style.cssText = [
+      'font-family:"Cinzel",serif',
+      'font-size:13px',
+      'letter-spacing:.32em',
+      'color:#718ba3',
+      'text-align:center',
+      'margin-bottom:16px',
+    ].join(';');
+    panel.appendChild(eyebrow);
+
     const titleEl = document.createElement('div');
     titleEl.textContent = title;
     titleEl.style.cssText = [
-      `font-size:clamp(56px, 6vw, 96px)`,
+      `font-size:clamp(48px, 5vw, 82px)`,
       `color:${titleColor}`,
       `text-shadow:0 0 18px ${titleColor}aa`,
-      `margin-bottom:64px`,
+      `margin-bottom:48px`,
       `letter-spacing:0.08em`,
       `font-weight:700`,
     ].join(';');
-    overlay.appendChild(titleEl);
+    panel.appendChild(titleEl);
 
     items.forEach((_, i) => {
       const btn = document.createElement('button');
       btn.textContent = items[i].label;
       btn.dataset.idx = String(i);
       btn.style.cssText = [
-        'background:none',
-        'border:none',
+        'background:rgba(255,255,255,0)',
+        'border:1px solid rgba(216,189,114,0)',
+        'border-left:3px solid rgba(216,189,114,0)',
         'font-family:inherit',
         'font-weight:700',
         'font-size:clamp(24px, 2.4vw, 40px)',
         'color:#e8e8f0',
         'cursor:pointer',
-        'padding:12px 32px',
+        'padding:14px 32px',
         'margin:4px 0',
-        'transition:color 160ms ease, transform 160ms ease, text-shadow 160ms ease',
+        'text-align:left',
+        'letter-spacing:.12em',
+        'transition:color 160ms ease, transform 160ms ease, text-shadow 160ms ease, background 160ms ease, border-color 160ms ease',
         'outline:none',
       ].join(';');
       btn.addEventListener('mouseenter', () => {
@@ -1372,9 +1479,10 @@ export class GameScene extends Phaser.Scene {
         this.menuCursor = i;
         this.confirmMenu();
       });
-      overlay.appendChild(btn);
+      panel.appendChild(btn);
     });
 
+    overlay.appendChild(panel);
     document.body.appendChild(overlay);
     this.menuOverlayDom = overlay;
     requestAnimationFrame(() => {
@@ -1393,10 +1501,17 @@ export class GameScene extends Phaser.Scene {
         btn.style.color = '#ffe680';
         btn.style.transform = 'scale(1.08)';
         btn.style.textShadow = '0 0 14px rgba(255, 230, 128, 0.55)';
+        btn.style.background = 'linear-gradient(90deg,rgba(216,189,114,.12),rgba(216,189,114,0))';
+        btn.style.borderLeftColor = 'rgba(216,189,114,.9)';
+        btn.style.borderTopColor = 'rgba(216,189,114,.15)';
+        btn.style.borderRightColor = 'rgba(216,189,114,0)';
+        btn.style.borderBottomColor = 'rgba(216,189,114,.15)';
       } else {
         btn.style.color = '#e8e8f0';
         btn.style.transform = 'scale(1)';
         btn.style.textShadow = '0 0 8px rgba(0, 0, 0, 0.45)';
+        btn.style.background = 'rgba(255,255,255,0)';
+        btn.style.borderColor = 'rgba(216,189,114,0)';
       }
     });
   }
@@ -1444,7 +1559,7 @@ export class GameScene extends Phaser.Scene {
     this.physics.pause();
     this.addMenuBlurBg();
     this.buildMenu(
-      'PAUSED',
+      '月影暫止',
       [
         { label: '繼續', onSelect: () => this.closePauseMenu() },
         { label: '設定', onSelect: () => this.openSettingsOverlay() },
@@ -1469,7 +1584,7 @@ export class GameScene extends Phaser.Scene {
     this.physics.pause();
     this.addMenuBlurBg();
     this.buildMenu(
-      'YOU DIED',
+      '墜入長夜',
       [
         {
           label: '重試',
@@ -1518,7 +1633,10 @@ export class GameScene extends Phaser.Scene {
   update(t: number, dt: number) {
     this.samplePad();
     if (this.bossEntranceState === 'falling' && this.boss) {
-      this.boss.visual.setPosition(this.boss.obj.x, this.boss.obj.y - 8);
+      this.boss.visual.setPosition(
+        this.boss.obj.x,
+        this.boss.obj.y + this.boss.visualOffsetY,
+      );
       this.boss.visual.setRotation(0);
     }
     if (this.bossEntranceState === 'hovering') return;
@@ -1592,7 +1710,7 @@ export class GameScene extends Phaser.Scene {
     if (!boss) return;
     if (this.bossEntranceState === 'hovering') return;
     if (this.bossEntranceState === 'falling') {
-      boss.visual.setPosition(boss.obj.x, boss.obj.y - 8);
+      boss.visual.setPosition(boss.obj.x, boss.obj.y + boss.visualOffsetY);
       boss.visual.setRotation(0);
       return;
     }
@@ -1721,7 +1839,7 @@ export class GameScene extends Phaser.Scene {
           e.obj.getBounds(),
         )
       ) {
-        this.player.takeHit(t, e.obj.x);
+        if (this.player.takeHit(t, e.obj.x)) e.playContactAttack(t);
         continue;
       }
       const ehb = e.getAttackHitbox();

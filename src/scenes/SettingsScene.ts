@@ -33,6 +33,8 @@ type RowVisual = {
   value?: Phaser.GameObjects.Text;
   single?: Phaser.GameObjects.Text;
   hit: Phaser.GameObjects.Rectangle;
+  accent: Phaser.GameObjects.Rectangle;
+  valuePlate?: Phaser.GameObjects.Rectangle;
 };
 
 export class SettingsScene extends Phaser.Scene {
@@ -65,6 +67,25 @@ export class SettingsScene extends Phaser.Scene {
     this.cameras.main.fadeIn(220, 0, 0, 0);
     createMoonlitBackdrop(this, w, h);
 
+    const centerX = w / 2;
+    this.add
+      .rectangle(centerX + 14, h / 2 + 12, 880, h - 70, 0x02040a, 0.42)
+      .setStrokeStyle(1, 0x000000, 0);
+    this.add
+      .rectangle(centerX, h / 2, 880, h - 70, 0x080c15, 0.91)
+      .setStrokeStyle(1, 0xd9c88f, 0.24);
+
+    const frame = this.add.graphics();
+    frame.lineStyle(1, 0xd9c88f, 0.38);
+    frame.lineBetween(centerX - 408, 58, centerX - 330, 58);
+    frame.lineBetween(centerX - 408, 58, centerX - 408, 136);
+    frame.lineBetween(centerX + 408, 58, centerX + 330, 58);
+    frame.lineBetween(centerX + 408, 58, centerX + 408, 136);
+    frame.lineBetween(centerX - 408, h - 58, centerX - 330, h - 58);
+    frame.lineBetween(centerX - 408, h - 58, centerX - 408, h - 136);
+    frame.lineBetween(centerX + 408, h - 58, centerX + 330, h - 58);
+    frame.lineBetween(centerX + 408, h - 58, centerX + 408, h - 136);
+
     this.rebinding = null;
     this.firstFrame = true;
     this.padPrevButtons = [];
@@ -76,11 +97,21 @@ export class SettingsScene extends Phaser.Scene {
     this.add
       .text(w / 2, 80, '設定', {
         fontFamily: '"Noto Serif TC", "Cinzel", Georgia, serif',
-        fontSize: '72px',
-        color: '#ffe680',
+        fontSize: '60px',
+        color: '#e7d7ac',
       })
       .setOrigin(0.5)
-      .setShadow(0, 0, '#ffe680', 10, true, true);
+      .setLetterSpacing(8)
+      .setShadow(0, 0, '#d9c88f', 10, true, true);
+
+    this.add
+      .text(w / 2, 126, 'CONTROLS & AUDIO', {
+        fontFamily: '"Cinzel", "Noto Sans TC", system-ui, sans-serif',
+        fontSize: '15px',
+        color: '#718ba3',
+      })
+      .setOrigin(0.5)
+      .setLetterSpacing(6);
 
     this.rows = [];
     (Object.keys(KEYBOARD_ACTION_LABELS) as KeyboardAction[]).forEach((a) => {
@@ -95,33 +126,49 @@ export class SettingsScene extends Phaser.Scene {
     this.rows.push({ kind: 'reset' });
     this.rows.push({ kind: 'back' });
 
-    const centerX = w / 2;
-    const gap = 40;
-    const labelX = centerX - gap;
-    const valueX = centerX + gap;
-    const rowH = 40;
-    const kbHeaderY = 125;
-    const startY = 170;
+    const labelX = centerX - 72;
+    const valueX = centerX + 105;
+    const rowH = 38;
+    const kbHeaderY = 151;
+    const startY = 184;
     const padHeaderOffset = 50;
     const audioHeaderOffset = 50;
-    const actionBlockOffset = 30;
+    const actionBlockOffset = 22;
     const sectionHeaderInset = 15;
+
+    const sectionRules = this.add.graphics();
+    const drawSectionRule = (y: number) => {
+      sectionRules.lineStyle(1, 0xd9c88f, 0.28);
+      sectionRules.lineBetween(centerX - 330, y, centerX - 70, y);
+      sectionRules.lineBetween(centerX + 70, y, centerX + 330, y);
+      sectionRules.fillStyle(0xe7d7ac, 0.7);
+      sectionRules.fillCircle(centerX, y, 3);
+    };
+    drawSectionRule(kbHeaderY);
+    drawSectionRule(startY + kbSeparatorIdx * rowH + sectionHeaderInset);
+    drawSectionRule(
+      startY + audioSeparatorIdx * rowH + padHeaderOffset + sectionHeaderInset,
+    );
 
     this.add
       .text(centerX, kbHeaderY, '鍵盤', {
         fontFamily: '"Noto Sans TC", "Inter", system-ui, sans-serif',
-        fontSize: '28px',
-        color: '#9999bb',
+        fontSize: '19px',
+        color: '#aeb8c4',
       })
-      .setOrigin(0.5);
+      .setOrigin(0.5)
+      .setLetterSpacing(4)
+      .setBackgroundColor('#080c15');
 
     this.add
       .text(centerX, startY + kbSeparatorIdx * rowH + sectionHeaderInset, '搖桿', {
         fontFamily: '"Noto Sans TC", "Inter", system-ui, sans-serif',
-        fontSize: '28px',
-        color: '#9999bb',
+        fontSize: '19px',
+        color: '#aeb8c4',
       })
-      .setOrigin(0.5);
+      .setOrigin(0.5)
+      .setLetterSpacing(4)
+      .setBackgroundColor('#080c15');
 
     this.add
       .text(
@@ -130,11 +177,13 @@ export class SettingsScene extends Phaser.Scene {
         '音訊',
         {
           fontFamily: '"Noto Sans TC", "Inter", system-ui, sans-serif',
-          fontSize: '28px',
-          color: '#9999bb',
+          fontSize: '19px',
+          color: '#aeb8c4',
         },
       )
-      .setOrigin(0.5);
+      .setOrigin(0.5)
+      .setLetterSpacing(4)
+      .setBackgroundColor('#080c15');
 
     this.rowVisuals = this.rows.map((row, i) => {
       let y = startY + i * rowH;
@@ -144,31 +193,38 @@ export class SettingsScene extends Phaser.Scene {
 
       const visual: RowVisual = {
         hit: this.add
-          .rectangle(centerX, y, 520, rowH - 4, 0x000000, 0)
+          .rectangle(centerX, y, 680, rowH - 3, 0x0d1420, 0.2)
+          .setStrokeStyle(1, 0x718ba3, 0.08)
           .setOrigin(0.5),
+        accent: this.add
+          .rectangle(centerX - 331, y, 3, rowH - 12, 0xd9c88f, 0.85)
+          .setVisible(false),
       };
 
       if (row.kind === 'keyboard' || row.kind === 'gamepad' || row.kind === 'audio') {
+        visual.valuePlate = this.add
+          .rectangle(centerX + 216, y, 220, rowH - 10, 0x070b13, 0.72)
+          .setStrokeStyle(1, 0x718ba3, 0.24);
         visual.label = this.add
           .text(labelX, y, this.labelText(row), {
             fontFamily: '"Noto Sans TC", "Inter", system-ui, sans-serif',
-            fontSize: '26px',
-            color: '#e8e8f0',
+            fontSize: '21px',
+            color: '#cbd2da',
           })
           .setOrigin(1, 0.5);
         visual.value = this.add
           .text(valueX, y, this.valueText(row), {
             fontFamily: '"Noto Sans TC", "Inter", system-ui, sans-serif',
-            fontSize: '26px',
-            color: '#e8e8f0',
+            fontSize: '19px',
+            color: '#aeb8c4',
           })
           .setOrigin(0, 0.5);
       } else {
         visual.single = this.add
           .text(centerX, y, this.singleText(row), {
             fontFamily: '"Noto Sans TC", "Inter", system-ui, sans-serif',
-            fontSize: '26px',
-            color: '#9999bb',
+            fontSize: '20px',
+            color: '#8290a1',
           })
           .setOrigin(0.5);
       }
@@ -188,10 +244,12 @@ export class SettingsScene extends Phaser.Scene {
     });
 
     this.hint = this.add
-      .text(centerX, h - 50, '↑↓ 選擇 · Enter / A 鍵 修改 · ESC / B 取消或返回', {
+      .text(centerX, h - 40, '↑↓  選擇     Enter / A  修改     ESC / B  取消或返回', {
         fontFamily: '"Noto Sans TC", "Inter", system-ui, sans-serif',
-        fontSize: '22px',
-        color: '#6b6b88',
+        fontSize: '17px',
+        color: '#657080',
+        backgroundColor: '#080c15cc',
+        padding: { left: 18, right: 18, top: 6, bottom: 6 },
       })
       .setOrigin(0.5);
 
@@ -242,18 +300,31 @@ export class SettingsScene extends Phaser.Scene {
       const rebindingThis = this.rebinding && idx === i;
       let color: string;
       if (rebindingThis) color = '#ff6b9a';
-      else if (selected) color = '#ffe680';
-      else if (row.kind === 'reset' || row.kind === 'back') color = '#9999bb';
-      else color = '#e8e8f0';
+      else if (selected) color = '#e7d7ac';
+      else if (row.kind === 'reset' || row.kind === 'back') color = '#8290a1';
+      else color = '#cbd2da';
 
       v.label?.setColor(color);
-      v.value?.setColor(color);
+      v.value?.setColor(rebindingThis ? '#ff8eae' : selected ? '#e7d7ac' : '#aeb8c4');
       v.single?.setColor(color);
-
-      const scale = selected ? 1.05 : 1;
-      v.label?.setScale(scale);
-      v.value?.setScale(scale);
-      v.single?.setScale(scale);
+      v.hit.setFillStyle(
+        rebindingThis ? 0x351522 : selected ? 0x172234 : 0x0d1420,
+        rebindingThis || selected ? 0.92 : 0.2,
+      );
+      v.hit.setStrokeStyle(
+        selected ? 1 : 1,
+        rebindingThis ? 0xff6b9a : selected ? 0xd9c88f : 0x718ba3,
+        rebindingThis || selected ? 0.68 : 0.08,
+      );
+      v.accent
+        .setVisible(selected)
+        .setFillStyle(rebindingThis ? 0xff6b9a : 0xd9c88f, 0.9);
+      v.valuePlate?.setFillStyle(selected ? 0x0b111d : 0x070b13, selected ? 0.94 : 0.72);
+      v.valuePlate?.setStrokeStyle(
+        1,
+        rebindingThis ? 0xff6b9a : selected ? 0xd9c88f : 0x718ba3,
+        rebindingThis || selected ? 0.52 : 0.24,
+      );
     });
   }
 
